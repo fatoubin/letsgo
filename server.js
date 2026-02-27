@@ -1,6 +1,6 @@
 // ================= IMPORTS =================
 const express = require("express");
-const { Pool } = require("pg");
+const mysql = require("mysql2");
 const cors = require("cors");
 require('dotenv').config();
 
@@ -10,16 +10,23 @@ app.use(cors());
 app.use(express.json());
 
 // ================= CONNEXION MYSQL =================
-const db = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: {
-    rejectUnauthorized: false
-  }
+const mysql = require("mysql2");
+
+const db = mysql.createConnection({
+  host: process.env.DB_HOST,
+  user: process.env.DB_USER,
+  password: process.env.DB_PASSWORD,
+  database: process.env.DB_NAME,
+  port: process.env.DB_PORT,
 });
 
-db.connect()
-  .then(() => console.log("✅ Connecté à PostgreSQL (Render)"))
-  .catch(err => console.error("❌ Erreur PostgreSQL:", err));
+db.connect((err) => {
+  if (err) {
+    console.error("❌ Erreur connexion MySQL:", err);
+  } else {
+    console.log("✅ Connecté à Railway MySQL !");
+  }
+});
 
 // ================= TOKENS =================
 const tokens = {}; // token => user_id
@@ -482,14 +489,7 @@ app.post("/api/auth/logout", authenticate, (req, res) => {
     
     res.json({ message: "Déconnexion réussie" });
 });
-// ================= BUS LIVE (TEST) =================
-app.get("/api/bus/live", (req, res) => {
-  res.json({
-    status: "OK",
-    message: "Route bus live fonctionnelle",
-    buses: []
-  });
-});
+
 // ================= START SERVER =================
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => {
