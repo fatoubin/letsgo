@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Suivi en Temps Réel + Liste Chauffeurs</title>
+
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+
+    <style>
+        html, body {
+            height: 100%;
+            margin: 0;
+            padding: 0;
+        }
+        #map {
+            height: 90%;
+            width: 100%;
+        }
+
+        #driverList {
+            position:absolute;
+            top:80px;
+            left:10px;
+            width:250px;
+            background:white;
+            padding:10px;
+            border-radius:8px;
+            z-index:999;
+            max-height:300px;
+            overflow-y:auto;
+            box-shadow:0 0 8px #ccc;
+        }
+        .driverItem {
+            border:1px solid #ddd;
+            padding:8px;
+            margin-bottom:6px;
+            border-radius:6px;
+        }
+
+        #etaBox {
+            height: 10%;
+            padding: 10px;
+            background: #f2f2f2;
+            font-size: 18px;
+            border-top: 1px solid #ccc;
+        }
+    </style>
+</head>
+
+<body>
+
+<!-- Formulaire trajet + bouton ETA -->
+<div style="padding:10px; background:#fff; position:absolute; z-index:999;">
+    <input id="from" placeholder="Départ (ex : Dakar)">
+    <input id="to" placeholder="Destination (ex : Thiès)">
+    <button onclick="demanderTrajet()">Rechercher trajet</button>
+</div>
+
+<!-- Liste des chauffeurs correspondants -->
+<div id="driverList">
+    <h3>🚗 Chauffeurs trouvés</h3>
+    <div id="driverItems">Aucun chauffeur trouvé…</div>
+</div>
+
+<!-- ETA -->
+<div id="etaBox">
+    <button onclick="sharePosition()">📍 Partager ma position</button>
+    <span id="etaText">ETA : en attente…</span>
+</div>
+
+<!-- Carte -->
+<div id="map"></div>
+
+<!-- JS -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="http://localhost:3000/socket.io/socket.io.js"></script>
+
+<script>
+
+    const socket = io("http://localhost:3000");
+
+    // ----------------- CARTE -----------------
+    const map = L.map('map').setView([14.6937, -17.4441], 13);
+
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        maxZoom: 19,
+        attribution: "© OpenStreetMap"
+    }).addTo(map);
+
+
+    // Marqueurs des chauffeurs
+    let driverMarkers = {};
+
+    // Position client
+    let clientPos = null;
+
+
+
+    // ----------- PARTAGER POSITION CLIENT ----------
+    function sharePosition() {
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition((pos) => {
+                clientPos = {
+                    lat: pos.coords.latitude,
+                    lng: pos.coords.longitude
+                };
+                document.getElementById("etaText").innerHTML = "📍 Position client enregistrée";
+            });
+        }
+    }
+
+
+
+    // ----------- CALCUL DISTANCE (Haversine) ----------
+    function distanceKm(lat1, lng1, lat2, lng2) {
+        const R = 6371;
+        const dLat = (lat2 - lat1) * Math.PI/180;
+        const dLng = (lng2 - lng1) * Math.PI/180;
+
+        const a = Math.sin(dLat/2)**2 +
+                  Math.cos(lat1*Math.PI/180) *
+                  Math.cos(lat2*Math.PI/180) *
+                  Math.sin(dLng/2)**2;
+
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+        return R * c;
+    }
+
+    // ----------- CALCUL ETA ----------
+    function calculateETA(driver, client) {
+        if (!client) return null;
+
+        const km = distanceKm(driver.lat, driver.lng, client.lat, client.lng);
+        const eta = Math.round((km / 50) * 60); // 50 km/h
+        return eta;
+    }
+
+
+
+    // ------------------- RECHERCHE TRAJET -------------------
+    function demanderTrajet() {
+        const from = document.getElementById("from").value;
+        const to = document.getElementById("to").value;
+
+        socket.emit("clientRequest", { from, to });
+        document.getElementById("driverItems").innerHTML = "Recherche en cours…";
+    }
+
+
+
+    // ------------------- LISTE + CARTE -------------------
+    function updateDriverList(driver) {
+        const list = document.getElementById("driverItems");
+
+        if (list.innerHTML.includes("Aucun") || list.innerHTML.includes("Recherche")) {
+            list.innerHTML = "";
+        }
+
+        // Créer ou mettre à jour un élément
+        let div = document.getElementById("driver_" + driver.id);
+
+        const km = clientPos
+            ? distanceKm(clientPos.lat, clientPos.lng, driver.lat, driver.lng).toFixed(2)
+            : "?";
+
+        const html = `
+            <div class="driverItem">
+                <b>Chauffeur : ${driver.id}</b><br>
+                🚗 Trajet : Dakar → Thiès<br>
+                🪑 Places : 3<br>
+                📍 Distance : ${km} km<br>
+                <button onclick="focusDriver('${driver.id}')">Voir sur carte</button>
+            </div>
+        `;
+
+        if (!div) {
+            div = document.createElement("div");
+            div.id = "driver_" + driver.id;
+            div.innerHTML = html;
+            list.appendChild(div);
+        } else {
+            div.innerHTML = html;
+        }
+    }
+
+    function focusDriver(id) {
+        if (!driverMarkers[id]) return;
+        map.setView(driverMarkers[id].getLatLng(), 16);
+    }
+
+
+
+    // ------------------- RÉCEPTION POSITION DES CHAUFFEURS -------------------
+    socket.on("matchingDriver", (driver) => {
+
+        // Marqueur
+        if (!driverMarkers[driver.id]) {
+            driverMarkers[driver.id] = L.marker([driver.lat, driver.lng])
+                .addTo(map)
+                .bindPopup("Chauffeur : " + driver.id);
+        }
+
+        driverMarkers[driver.id].setLatLng([driver.lat, driver.lng]);
+
+        // Affichage liste
+        updateDriverList(driver);
+
+        // ETA
+        if (clientPos) {
+            const eta = calculateETA(driver, clientPos);
+            document.getElementById("etaText").innerHTML =
+                `⏳ ETA chauffeur ${driver.id} : <b>${eta} min</b>`;
+        }
+    });
+
+</script>
+
+</body>
+</html>
