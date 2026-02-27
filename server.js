@@ -486,9 +486,16 @@ app.post("/api/auth/logout", authenticate, (req, res) => {
     
     res.json({ message: "Déconnexion réussie" });
 });
-
+// ================= BUS LIVE (TEST) =================
+app.get("/api/bus/live", (req, res) => {
+  res.json({
+    status: "OK",
+    message: "Route bus live fonctionnelle",
+    buses: []
+  });
+});
 // ================= START SERVER =================
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 Serveur démarré sur http://0.0.0.0:${PORT}`);
+  console.log(`🚀 Serveur démarré sur le port ${PORT}`);
 });
