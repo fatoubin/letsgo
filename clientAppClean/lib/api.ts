@@ -11,7 +11,7 @@ import { Platform } from "react-native";
  * 2. Copiez l'URL https://xxxx.ngrok-free.app
  * 3. Collez-la ci-dessous
  */
-export const API_URL = "https://fredia-coverable-kora.ngrok-free.dev";// ⚠️ À CHANGER !!!
+const API = "https://letsgo-ks54.onrender.com";
 
 console.log("🌐 API URL (ngrok):", API_URL);
 console.log("📱 Plateforme:", Platform.OS);

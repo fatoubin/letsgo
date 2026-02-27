@@ -1,6 +1,6 @@
 // ================= IMPORTS =================
 const express = require("express");
-const mysql = require("mysql2");
+const { Pool } = require("pg");
 const cors = require("cors");
 require('dotenv').config();
 
@@ -10,20 +10,16 @@ app.use(cors());
 app.use(express.json());
 
 // ================= CONNEXION MYSQL =================
-const db = mysql.createConnection({
-    host: process.env.DB_HOST || "localhost",
-    user: process.env.DB_USER || "root",
-    password: process.env.DB_PASSWORD || "",
-    database: process.env.DB_NAME || "database"
+const db = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: {
+    rejectUnauthorized: false
+  }
 });
 
-db.connect((err) => {
-    if (err) {
-        console.error("❌ Erreur de connexion MySQL :", err);
-        return;
-    }
-    console.log("✅ Connecté à MySQL - Base de données:", process.env.DB_NAME || "covoiturage");
-});
+db.connect()
+  .then(() => console.log("✅ Connecté à PostgreSQL (Render)"))
+  .catch(err => console.error("❌ Erreur PostgreSQL:", err));
 
 // ================= TOKENS =================
 const tokens = {}; // token => user_id
