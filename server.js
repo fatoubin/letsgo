@@ -10,14 +10,14 @@ app.use(cors());
 app.use(express.json());
 
 // ================= CONNEXION MYSQL =================
-const mysql = require("mysql2");
+
 
 const db = mysql.createPool({
   host: process.env.DB_HOST,
   user: process.env.DB_USER,
   password: process.env.DB_PASSWORD,
   database: process.env.DB_NAME,
-  port: process.env.DB_PORT,
+  port: Number(process.env.DB_PORT),
   waitForConnections: true,
   connectionLimit: 10,
   queueLimit: 0,
@@ -25,7 +25,6 @@ const db = mysql.createPool({
     rejectUnauthorized: false
   }
 });
-
 // ================= TOKENS =================
 const tokens = {}; // token => user_id
 
@@ -490,6 +489,7 @@ app.post("/api/auth/logout", authenticate, (req, res) => {
 
 // ================= START SERVER =================
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, '0.0.0.0', () => {
+
+app.listen(PORT, "0.0.0.0", () => {
   console.log(`🚀 Serveur démarré sur le port ${PORT}`);
 });
