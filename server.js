@@ -3,10 +3,23 @@ const express = require("express");
 const mysql = require("mysql2");
 const cors = require("cors");
 require('dotenv').config();
+const bcrypt = require("bcrypt");
+const jwt = require("jsonwebtoken");
+const helmet = require("helmet");
+const rateLimit = require("express-rate-limit");
 
 // ================= APP =================
 const app = express();
 app.use(cors());
+app.use(helmet());
+
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // 100 requêtes max
+  message: "Trop de requêtes, réessayez plus tard."
+});
+
+app.use(limiter);
 app.use(express.json());
 
 // ================= CONNEXION MYSQL =================
@@ -25,26 +38,25 @@ const db = mysql.createPool({
     rejectUnauthorized: false
   }
 });
-// ================= TOKENS =================
-const tokens = {}; // token => user_id
+
 
 // ================= AUTH MIDDLEWARE =================
 function authenticate(req, res, next) {
-    const auth = req.headers.authorization;
+  const authHeader = req.headers.authorization;
 
-    if (!auth) {
-        return res.status(401).json({ message: "Token manquant" });
-    }
+  if (!authHeader) {
+    return res.status(401).json({ message: "Token manquant" });
+  }
 
-    const token = auth.replace("Bearer ", "");
-    const userId = tokens[token];
+  const token = authHeader.replace("Bearer ", "");
 
-    if (!userId) {
-        return res.status(401).json({ message: "Token invalide" });
-    }
-
-    req.user = { id: userId };
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    req.user = { id: decoded.id };
     next();
+  } catch (error) {
+    return res.status(401).json({ message: "Token invalide ou expiré" });
+  }
 }
 
 // ================= REGISTER =================
