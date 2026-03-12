@@ -14,14 +14,12 @@ app.use(cors());
 app.use(helmet());
 
 const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // 100 requêtes max
+  windowMs: 15 * 60 * 1000,
+  max: 100,
   message: "Trop de requêtes, réessayez plus tard."
 });
 
-
 app.use(express.json());
-
 // ================= CONNEXION MYSQL =================
 
 
