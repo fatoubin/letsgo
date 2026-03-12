@@ -3,15 +3,8 @@
 import * as SecureStore from "expo-secure-store";
 import { Platform } from "react-native";
 
-/**
- * 🚀 NGROK - URL PUBLIQUE
- * 
- * IMPORTANT: 
- * 1. Lancez ngrok: ngrok http 3000
- * 2. Copiez l'URL https://xxxx.ngrok-free.app
- * 3. Collez-la ci-dessous
- */
-export const API_URL = "https://fredia-coverable-kora.ngrok-free.dev";// ⚠️ À CHANGER !!!
+
+export const API_URL = "https://letsgo-ks54.onrender.com";// ⚠️ À CHANGER !!!
 
 console.log("🌐 API URL (ngrok):", API_URL);
 console.log("📱 Plateforme:", Platform.OS);

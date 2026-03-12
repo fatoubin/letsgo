@@ -1,11 +1,4 @@
-import {
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  StyleSheet,
-  Alert,
-} from "react-native";
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert } from "react-native";
 import { useLocalSearchParams, router } from "expo-router";
 import { useState } from "react";
 import { updateTrajet } from "../../lib/api";
@@ -14,31 +7,54 @@ export default function ModifierTrajet() {
   const params = useLocalSearchParams();
   const trajet = JSON.parse(params.trajet as string);
 
-  // 🔁 Pré-remplissage
-  const [depart, setDepart] = useState(trajet.depart);
-  const [destination, setDestination] = useState(trajet.destination);
-  const [places, setPlaces] = useState(String(trajet.places));
+  // Extraire date et heure de trajet.heure (format attendu: "YYYY-MM-DD HH:MM:SS" ou similaire)
+  const [dateDepart, setDateDepart] = useState(() => {
+    if (trajet.heure) {
+      // Supposons que trajet.heure soit une chaîne comme "2025-03-03T14:30:00" ou "2025-03-03 14:30:00"
+      // On prend la partie avant l'espace ou avant T
+      const datePart = trajet.heure.split(' ')[0] || trajet.heure.split('T')[0];
+      return datePart || '';
+    }
+    return '';
+  });
 
-  // 🕒 Heure et date déjà définies
-  const [dateDepart, setDateDepart] = useState(
-    trajet.date_depart || trajet.heure?.split(" ")[0]
-  );
-  const [heureDepart, setHeureDepart] = useState(
-    trajet.heure_depart || trajet.heure?.split(" ")[1]
-  );
+  const [heureDepart, setHeureDepart] = useState(() => {
+    if (trajet.heure) {
+      // Pour l'heure, on prend après l'espace ou après T
+      let timePart = '';
+      if (trajet.heure.includes(' ')) {
+        timePart = trajet.heure.split(' ')[1];
+      } else if (trajet.heure.includes('T')) {
+        timePart = trajet.heure.split('T')[1];
+      }
+      // Enlever les secondes si présentes (garder HH:MM)
+      if (timePart) {
+        timePart = timePart.substring(0, 5); // prend les 5 premiers caractères (HH:MM)
+      }
+      return timePart || '';
+    }
+    return '';
+  });
+
+  const [depart, setDepart] = useState(trajet.depart || '');
+  const [destination, setDestination] = useState(trajet.destination || '');
+  const [places, setPlaces] = useState(String(trajet.places || ''));
 
   const submit = async () => {
     if (!depart || !destination || !places || !dateDepart || !heureDepart) {
-      Alert.alert("Erreur", "Champs manquants");
+      Alert.alert("Erreur", "Tous les champs sont requis");
       return;
     }
+
+    // Reconstituer la date-heure au format "YYYY-MM-DD HH:MM:00" (avec secondes à 00)
+    const heureFormatted = `${dateDepart} ${heureDepart}:00`;
 
     try {
       await updateTrajet(trajet.id, {
         depart,
         destination,
         places: Number(places),
-        heure: `${dateDepart} ${heureDepart}`,
+        heure: heureFormatted,
       });
 
       Alert.alert("Succès", "Trajet modifié avec succès");

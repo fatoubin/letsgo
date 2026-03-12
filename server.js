@@ -19,7 +19,7 @@ const limiter = rateLimit({
   message: "Trop de requêtes, réessayez plus tard."
 });
 
-app.use(limiter);
+app.use("/api/auth/login", loginLimiter);
 app.use(express.json());
 
 // ================= CONNEXION MYSQL =================

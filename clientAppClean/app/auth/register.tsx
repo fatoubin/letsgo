@@ -83,61 +83,88 @@ export default function RegisterScreen() {
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleRegister = async () => {
-    if (!validateForm()) {
-      Alert.alert("Erreur", "Veuillez corriger les erreurs");
+ const handleRegister = async () => {
+  if (!validateForm()) {
+    Alert.alert("Erreur", "Veuillez corriger les erreurs");
+    return;
+  }
+
+  try {
+    setLoading(true);
+
+    const cleanEmail = formData.email.trim().toLowerCase();
+    const cleanNom = formData.nom.trim();
+    const cleanPrenom = formData.prenom.trim();
+    const cleanResidence = formData.residence?.trim();
+    const cleanTelephone = formData.telephone
+      ? formData.telephone.replace(/[\s\-]/g, "")
+      : undefined;
+
+    const cleanPassword = formData.password.trim();
+
+    // 🔐 Mot de passe sécurisé minimum 8 caractères + 1 chiffre
+    const strongPasswordRegex = /^(?=.*[0-9]).{8,}$/;
+
+    if (!strongPasswordRegex.test(cleanPassword)) {
+      Alert.alert(
+        "Mot de passe faible",
+        "Minimum 8 caractères avec au moins 1 chiffre."
+      );
       return;
     }
 
-    try {
-      setLoading(true);
+    console.log("📝 Tentative inscription sécurisée");
 
-      console.log("📝 Tentative d'inscription:", formData.email);
+    // ⏳ Timeout 10 secondes
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
 
-      const response = await register({
-        nom: formData.nom,
-        prenom: formData.prenom,
-        email: formData.email,
-        telephone: formData.telephone || undefined,
-        residence: formData.residence || undefined,
-        password: formData.password,
-      });
+    const response = await register({
+      nom: cleanNom,
+      prenom: cleanPrenom,
+      email: cleanEmail,
+      telephone: cleanTelephone,
+      residence: cleanResidence || undefined,
+      password: cleanPassword,
+    });
 
-      console.log("✅ Réponse inscription:", response);
+    clearTimeout(timeout);
 
-      if (response.success || response.message?.includes("succès")) {
-        Alert.alert(
-          "Succès !",
-          "Votre compte a été créé avec succès. Vous pouvez maintenant vous connecter.",
-          [
-            {
-              text: "Se connecter",
-              onPress: () => router.replace("/auth/login"),
-            },
-          ]
-        );
-      } else {
-        throw new Error(response.message || "Erreur lors de l'inscription");
-      }
-    } catch (error: any) {
-      console.error("❌ Erreur inscription:", error);
-      
-      let message = "Une erreur est survenue";
-      if (error.message) {
-        if (error.message.includes("déjà utilisé")) {
-          message = "Cet email est déjà utilisé";
-        } else if (error.message.includes("réseau")) {
-          message = "Problème de connexion. Vérifiez votre réseau.";
-        } else {
-          message = error.message;
-        }
-      }
-      
-      Alert.alert("Inscription impossible", message);
-    } finally {
-      setLoading(false);
+    if (!response?.message) {
+      throw new Error("Réponse serveur invalide");
     }
-  };
+
+    Alert.alert(
+      "Succès !",
+      "Votre compte a été créé avec succès.",
+      [
+        {
+          text: "Se connecter",
+          onPress: () => router.replace("/auth/login"),
+        },
+      ]
+    );
+
+  } catch (error: any) {
+    console.error("❌ Erreur inscription:", error);
+
+    let message = "Erreur lors de l'inscription";
+
+    if (error.name === "AbortError") {
+      message = "Le serveur ne répond pas.";
+    } else if (error.message?.includes("déjà utilisé")) {
+      message = "Cet email est déjà utilisé.";
+    } else if (error.message?.includes("Network")) {
+      message = "Problème de connexion internet.";
+    } else if (error.message) {
+      message = error.message;
+    }
+
+    Alert.alert("Inscription impossible", message);
+  } finally {
+    setLoading(false);
+  }
+};
 
   const updateField = (field: string, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }));

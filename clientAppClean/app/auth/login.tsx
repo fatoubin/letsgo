@@ -18,60 +18,64 @@ export default function LoginScreen() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+const handleLogin = async () => {
+  if (!email || !password) {
+    Alert.alert("Erreur", "Veuillez remplir tous les champs");
+    return;
+  }
 
-  const handleLogin = async () => {
-    // Validation
-    if (!email || !password) {
-      Alert.alert("Erreur", "Veuillez remplir tous les champs");
-      return;
+  const cleanEmail = email.trim().toLowerCase();
+  const cleanPassword = password.trim();
+
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(cleanEmail)) {
+    Alert.alert("Erreur", "Veuillez entrer un email valide");
+    return;
+  }
+
+  try {
+    setLoading(true);
+
+    console.log("🔐 Tentative de connexion sécurisée");
+
+    // ⏳ Timeout sécurité 10 secondes
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
+
+    const data = await login(cleanEmail, cleanPassword);
+
+    clearTimeout(timeout);
+
+    if (!data?.token || !data?.user) {
+      throw new Error("Réponse serveur invalide");
     }
 
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
-      Alert.alert("Erreur", "Veuillez entrer un email valide");
-      return;
+    console.log("✅ Connexion réussie :", data.user.email);
+
+    // 🔐 Sauvegarde sécurisée via api.ts (évite double stockage)
+    router.replace("/(tabs)");
+
+  } catch (error: any) {
+    console.error("❌ Erreur connexion:", error);
+
+    let message = "Erreur de connexion";
+
+    if (error.name === "AbortError") {
+      message = "Le serveur met trop de temps à répondre.";
+    } else if (error.message?.includes("Network")) {
+      message = "Problème de connexion internet.";
+    } else if (error.message?.includes("401")) {
+      message = "Email ou mot de passe incorrect.";
+    } else if (error.message) {
+      message = error.message;
     }
 
-    try {
-      setLoading(true);
-
-      console.log("🔐 Tentative de connexion pour:", email);
-      
-      const data = await login(email, password);
-      console.log("✅ Réponse login:", data);
-
-      // Vérifier la structure de la réponse
-      if (data?.token && data?.user) {
-        // Sauvegarder le token et l'utilisateur
-        await SecureStore.setItemAsync("token", data.token);
-        await SecureStore.setItemAsync("user", JSON.stringify(data.user));
+    Alert.alert("Connexion impossible", message);
+  } finally {
+    setLoading(false);
+  }
+};
         
-        console.log("👤 Utilisateur connecté:", data.user.email);
-        
-        // Rediriger vers l'écran principal
-        router.replace("/(tabs)");
-      } else {
-        throw new Error("Format de réponse invalide");
-      }
-    } catch (error: any) {
-      console.error("❌ Erreur connexion:", error);
-      
-      let message = "Erreur de connexion au serveur";
-      if (error.message) {
-        if (error.message.includes("Network")) {
-          message = "Problème de réseau. Vérifiez votre connexion.";
-        } else if (error.message.includes("timeout")) {
-          message = "Le serveur ne répond pas. Vérifiez que ngrok est lancé.";
-        } else {
-          message = error.message;
-        }
-      }
-      
-      Alert.alert("Connexion impossible", message);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   return (
     <KeyboardAvoidingView 
