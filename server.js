@@ -179,6 +179,91 @@ app.post("/api/auth/login", (req, res) => {
 
 });
 
+// ================= CRÉER UN TRAJET =================
+app.post("/api/client/trajets", authenticate, (req, res) => {
+
+  const { depart, destination, date_depart, heure_depart, places } = req.body;
+
+  console.log("Création trajet - user:", req.user.id);
+
+  if (!destination || !places || !date_depart || !heure_depart) {
+    return res.status(400).json({ message: "Champs manquants" });
+  }
+
+  const heure = `${date_depart} ${heure_depart}`;
+
+  db.query(
+    "INSERT INTO trajets (user_id, depart, destination, heure, places) VALUES (?, ?, ?, ?, ?)",
+    [
+      req.user.id,
+      depart || "Position actuelle",
+      destination,
+      heure,
+      places
+    ],
+    (err, result) => {
+
+      if (err) {
+        console.error("❌ Erreur création trajet:", err);
+        return res.status(500).json({ message: "Erreur serveur" });
+      }
+
+      console.log("✅ Trajet créé:", result.insertId);
+
+      res.json({
+        id: result.insertId,
+        depart: depart || "Position actuelle",
+        destination,
+        heure,
+        places
+      });
+
+    }
+  );
+
+});
+// ================= planifier  UN TRAJET =================
+// ================= ROUTES POUR LES DEMANDES (planifier) =================
+
+// Créer une demande (besoin client)
+app.post("/api/client/demandes", authenticate, (req, res) => {
+  const { depart, destination, date_depart, heure_depart, places } = req.body;
+  
+  if (!depart || !destination || !date_depart || !heure_depart || !places) {
+    return res.status(400).json({ message: "Champs manquants" });
+  }
+  
+  db.query(
+    "INSERT INTO demandes (user_id, depart, destination, date_depart, heure_depart, places) VALUES (?, ?, ?, ?, ?, ?)",
+    [req.user.id, depart, destination, date_depart, heure_depart, places],
+    (err, result) => {
+      if (err) {
+        console.error("❌ Erreur création demande:", err);
+        return res.status(500).json({ message: "Erreur serveur" });
+      }
+      res.status(201).json({ 
+        message: "Demande enregistrée avec succès", 
+        id: result.insertId 
+      });
+    }
+  );
+});
+
+// Optionnel : Voir ses propres demandes
+app.get("/api/client/mes-demandes", authenticate, (req, res) => {
+  db.query(
+    "SELECT * FROM demandes WHERE user_id = ? ORDER BY created_at DESC",
+    [req.user.id],
+    (err, results) => {
+      if (err) {
+        console.error("❌ Erreur récupération demandes:", err);
+        return res.status(500).json({ message: "Erreur serveur" });
+      }
+      res.json(results);
+    }
+  );
+});
+
 // ================= TEST =================
 app.get("/api/test", (req, res) => {
 
