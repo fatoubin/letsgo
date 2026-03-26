@@ -263,6 +263,30 @@ app.get("/api/client/mes-demandes", authenticate, (req, res) => {
     }
   );
 });
+// Modifier une demande (vérification propriétaire)
+app.put("/api/client/demandes/:id", authenticate, (req, res) => {
+  const demandeId = req.params.id;
+  const { depart, destination, date_depart, heure_depart, places } = req.body;
+
+  if (!depart || !destination || !date_depart || !heure_depart || !places) {
+    return res.status(400).json({ message: "Champs manquants" });
+  }
+
+  db.query(
+    "UPDATE demandes SET depart = ?, destination = ?, date_depart = ?, heure_depart = ?, places = ? WHERE id = ? AND user_id = ?",
+    [depart, destination, date_depart, heure_depart, places, demandeId, req.user.id],
+    (err, result) => {
+      if (err) {
+        console.error("❌ Erreur modification demande:", err);
+        return res.status(500).json({ message: "Erreur serveur" });
+      }
+      if (result.affectedRows === 0) {
+        return res.status(404).json({ message: "Demande non trouvée ou non autorisée" });
+      }
+      res.json({ message: "Demande modifiée avec succès" });
+    }
+  );
+});
 
 // ================= TEST =================
 app.get("/api/test", (req, res) => {
@@ -284,6 +308,25 @@ app.get("/api/test", (req, res) => {
 
   });
 
+});
+
+// Supprimer une demande (vérification propriétaire)
+app.delete("/api/client/demandes/:id", authenticate, (req, res) => {
+  const demandeId = req.params.id;
+  db.query(
+    "DELETE FROM demandes WHERE id = ? AND user_id = ?",
+    [demandeId, req.user.id],
+    (err, result) => {
+      if (err) {
+        console.error("❌ Erreur suppression demande:", err);
+        return res.status(500).json({ message: "Erreur serveur" });
+      }
+      if (result.affectedRows === 0) {
+        return res.status(404).json({ message: "Demande non trouvée" });
+      }
+      res.json({ message: "Demande supprimée" });
+    }
+  );
 });
 
 // ================= SERVER =================
