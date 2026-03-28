@@ -20,98 +20,70 @@ export default function DriverRegisterStep3() {
   const router = useRouter();
   const params = useLocalSearchParams();
 
-  // ── Params reçus de Step1 ──
-  // fullname, email, phone, password
-
-  // ── Params reçus de Step2 (via ...params) ──
-  // profilePhoto, age, licenseNumber, licensePhoto
-
   const [brand, setBrand] = useState("");
   const [plate, setPlate] = useState("");
   const [seats, setSeats] = useState("");
   const [loading, setLoading] = useState(false);
 
   const submitDriver = async () => {
-  console.log("=== SUBMIT CALLED ===");
-  console.log("PARAMS =", JSON.stringify(params));
 
-  if (!brand || !plate || !seats) {
-    Alert.alert("Erreur", "Veuillez remplir tous les champs");
-    return;
-  }
-
-  const fullnameParts = String(params.fullname ?? "").trim().split(" ");
-  const prenom = fullnameParts[0] ?? "";
-  const nom = fullnameParts.slice(1).join(" ") || prenom;
-
-  console.log("nom =", nom, "| prenom =", prenom);
-
-  setLoading(true);
-
-  try {
-
-    console.log("📡 Appel RegisterStep3...");
-
-    const resUser = await fetch(`${API_URL}/api/auth/RegisterStep3`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        nom,
-        prenom,
-        email: params.email,
-        telephone: params.phone,
-        residence: "",
-        password: params.password,
-      }),
-    });
-
-    console.log("📥 resUser.status =", resUser.status);
-
-    const dataUser = await resUser.json();
-    console.log("📥 dataUser =", JSON.stringify(dataUser));
-
-    if (!resUser.ok) {
-      Alert.alert("Erreur inscription", dataUser.message || "Inscription échouée");
+    if (!brand || !plate || !seats) {
+      Alert.alert("Erreur", "Veuillez remplir tous les champs");
       return;
     }
 
-    console.log("📡 Appel driver/register...");
+    // Séparer fullname → prenom + nom
+    const fullnameParts = String(params.fullname ?? "").trim().split(" ");
+    const prenom = fullnameParts[0] ?? "";
+    const nom = fullnameParts.slice(1).join(" ") || prenom;
 
-    const resDriver = await fetch(`${API_URL}/api/driver/register`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        user_id: dataUser.userId,
-        vehicle_type: brand.trim(),
-        license_number: params.licenseNumber ?? "",
-        vehicle_plate: plate.trim(),
-        seats: Number(seats),
-      }),
-    });
+    setLoading(true);
 
-    console.log("📥 resDriver.status =", resDriver.status);
+    try {
 
-    const dataDriver = await resDriver.json();
-    console.log("📥 dataDriver =", JSON.stringify(dataDriver));
+      // ── UN SEUL appel qui crée user + driver en même temps ──
+      const res = await fetch(`${API_URL}/api/driver/register`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          // infos utilisateur
+          nom,
+          prenom,
+          email: params.email,
+          telephone: params.phone,
+          residence: "",
+          password: params.password,
+          // infos véhicule
+          vehicle_type: brand.trim(),
+          license_number: String(params.licenseNumber ?? ""),
+          vehicle_plate: plate.trim(),
+          seats: Number(seats),
+        }),
+      });
 
-    if (!resDriver.ok) {
-      Alert.alert("Erreur", dataDriver.message || "Création chauffeur échouée");
-      return;
+      const data = await res.json();
+      console.log("📥 status =", res.status, "| data =", JSON.stringify(data));
+
+      if (!res.ok) {
+        Alert.alert("Erreur", data.message || "Inscription échouée");
+        return;
+      }
+
+      // ── SUCCÈS ──
+      Alert.alert(
+        "Succès 🎉",
+        "Compte chauffeur créé avec succès !",
+        [{ text: "Se connecter", onPress: () => router.replace("/(auth)/login") }]
+      );
+
+    } catch (error: any) {
+      console.log("❌ CATCH ERROR =", error?.message ?? String(error));
+      Alert.alert("Erreur", error?.message ?? "Connexion serveur impossible");
+    } finally {
+      setLoading(false);
     }
 
-    Alert.alert(
-      "Succès 🎉",
-      "Compte chauffeur créé avec succès !",
-      [{ text: "Se connecter", onPress: () => router.replace("/(auth)/driver-login") }]
-    );
-
-  } catch (error: any) {
-    console.log("❌ CATCH ERROR =", error?.message ?? String(error));
-    Alert.alert("Erreur détaillée", error?.message ?? String(error));
-  } finally {
-    setLoading(false);
-  }
-};
+  };
 
   return (
 
