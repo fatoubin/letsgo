@@ -2,7 +2,7 @@
   "name": "chauffeurapp",
   "license": "0BSD",
   "version": "1.0.0",
-  "main": "index.js",
+  "main": "expo router",
   "scripts": {
     "start": "expo start",
     "android": "expo start --android",
