@@ -150,7 +150,7 @@ export default function DriverHomeScreen() {
 
         <TouchableOpacity
           style={styles.tripCard}
-          onPress={() => router.push({ pathname: "/(driver)/trips", params: { driverId } })}
+          onPress={() => router.push({ pathname: "/(driver)/TripScreen", params: { driverId } })}
         >
           <View style={styles.iconBoxBlue}>
             <Text style={styles.icon}>📍</Text>
@@ -160,7 +160,7 @@ export default function DriverHomeScreen() {
 
         <TouchableOpacity
           style={styles.addCard}
-          onPress={() => router.push({ pathname: "/(driver)/create-trip", params: { driverId } })}
+          onPress={() => router.push({ pathname: "/(driver)/Create-Trip", params: { driverId } })}
         >
           <View style={styles.iconBoxGreen}>
             <Text style={styles.icon}>＋</Text>
@@ -172,13 +172,13 @@ export default function DriverHomeScreen() {
 
       <PrimaryButton
         title="⚡ Prendre une course"
-        onPress={() => router.push({ pathname: "/(driver)/requests", params: { driverId } })}
+        onPress={() => router.push({ pathname: "/(driver)/Request", params: { driverId } })}
         style={styles.mainButton}
       />
 
       <TouchableOpacity
         style={styles.statsButton}
-        onPress={() => router.push({ pathname: "/(driver)/stats", params: { driverId } })}
+        onPress={() => router.push({ pathname: "/(driver)/Stats", params: { driverId } })}
       >
         <Text style={styles.statsText}>📊 Statistiques & Historique</Text>
       </TouchableOpacity>
