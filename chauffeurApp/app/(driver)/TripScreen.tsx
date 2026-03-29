@@ -1,231 +1,178 @@
 import React, { useEffect, useState } from "react";
 import {
-View,
-Text,
-StyleSheet,
-FlatList,
-TouchableOpacity,
-ActivityIndicator,
-Alert,
-RefreshControl
+  View,
+  Text,
+  StyleSheet,
+  FlatList,
+  TouchableOpacity,
+  ActivityIndicator,
+  Alert,
+  RefreshControl
 } from "react-native";
 
-import { useRouter, useLocalSearchParams } from "expo-router";
+import { useRouter } from "expo-router";
+import * as SecureStore from "expo-secure-store";
 
 import { COLORS } from "../../src/styles/colors";
 import { globalStyles } from "../../src/styles/globalStyles";
-import { API_URL } from "../../src/services/api";
+import { getDriverTrips } from "../../src/services/api";
 
-export default function DriverTripsScreen(){
+export default function DriverTripsScreen() {
 
-const router = useRouter()
-const params = useLocalSearchParams()
+  const router = useRouter();
 
-const driverId = Number(params?.driverId)
+  const [driverId, setDriverId] = useState<number | null>(null);
+  const [trips, setTrips] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
-const [trips,setTrips] = useState<any[]>([])
-const [loading,setLoading] = useState(true)
-const [refreshing,setRefreshing] = useState(false)
+  useEffect(() => {
+    const init = async () => {
+      const stored = await SecureStore.getItemAsync("driverId");
+      if (!stored) {
+        Alert.alert("Erreur", "Chauffeur non identifié");
+        setLoading(false);
+        return;
+      }
+      const id = Number(stored);
+      setDriverId(id);
+      await fetchTrips(id);
+    };
+    init();
+  }, []);
 
-useEffect(()=>{
+  const fetchTrips = async (id: number) => {
+    try {
+      const data = await getDriverTrips(id);
+      console.log("📥 TRIPS =", JSON.stringify(data));
+      setTrips(Array.isArray(data) ? data : []);
+    } catch (e) {
+      console.log("❌ DRIVER TRIPS ERROR", e);
+      Alert.alert("Erreur", "Impossible de charger les trajets");
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
 
-if(!driverId || isNaN(driverId)){
+  const handleRefresh = () => {
+    if (!driverId) return;
+    setRefreshing(true);
+    fetchTrips(driverId);
+  };
 
-Alert.alert(
-"Erreur",
-"Chauffeur non identifié"
-)
+  const getStatus = (trip: any) => {
+    if (trip.status === "completed") return { label: "Terminé", color: "#6B7280" };
+    if (trip.status === "cancelled") return { label: "Annulé", color: "#EF4444" };
+    return { label: "Actif", color: COLORS.success };
+  };
 
-setLoading(false)
-return
+  const renderTrip = ({ item }: any) => {
+    const status = getStatus(item);
 
-}
+    return (
+      <TouchableOpacity
+        style={styles.card}
+        onPress={() => router.push({
+          pathname: "/(driver)/trip-detail",
+          params: { trip: JSON.stringify(item) }
+        })}
+      >
+        {/* Champs du backend : depart, destination, heure, places */}
+        <Text style={styles.route}>
+          {item.depart} → {item.destination}
+        </Text>
 
-fetchTrips()
+        <Text style={styles.meta}>
+          🕐 {item.heure}
+        </Text>
 
-},[driverId])
+        <Text style={styles.meta}>
+          💺 {item.places} place(s)
+        </Text>
 
-const fetchTrips = async()=>{
+        <Text style={[styles.status, { color: status.color }]}>
+          ● {status.label}
+        </Text>
 
-try{
+      </TouchableOpacity>
+    );
+  };
 
-const res = await fetch(
-`${API_URL}/api/driver/trips?driverId=${driverId}`
-)
+  if (loading) {
+    return (
+      <View style={styles.center}>
+        <ActivityIndicator size="large" color={COLORS.primary} />
+      </View>
+    );
+  }
 
-const data = await res.json()
+  return (
+    <View style={globalStyles.screen}>
 
-if(data?.success){
+      <Text style={styles.title}>Mes trajets</Text>
 
-setTrips(data.trips || [])
+      <FlatList
+        data={trips}
+        keyExtractor={(item) => String(item.id)}
+        renderItem={renderTrip}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            tintColor={COLORS.primary}
+          />
+        }
+        ListEmptyComponent={
+          <Text style={styles.empty}>Aucun trajet publié pour le moment</Text>
+        }
+        contentContainerStyle={{ paddingBottom: 40 }}
+      />
 
-}else{
-
-Alert.alert(
-"Erreur",
-data.message || "Impossible de charger les trajets"
-)
-
-}
-
-}catch(e){
-
-console.log("DRIVER TRIPS ERROR",e)
-
-Alert.alert(
-"Erreur",
-"Connexion serveur impossible"
-)
-
-}
-finally{
-
-setLoading(false)
-setRefreshing(false)
-
-}
-
-}
-
-const handleRefresh = ()=>{
-setRefreshing(true)
-fetchTrips()
-}
-
-const getStatus = (trip:any)=>{
-
-if(trip.status === "completed"){
-return { label:"Terminé", color:"#6B7280" }
-}
-
-if(trip.status === "cancelled"){
-return { label:"Annulé", color:"#EF4444" }
-}
-
-return { label:"Actif", color:COLORS.success }
-
-}
-
-const renderTrip = ({item}:any)=>{
-
-const status = getStatus(item)
-
-return(
-
-<TouchableOpacity
-style={styles.card}
-onPress={()=>router.push({
-pathname:"/(driver)/trip-detail",
-params:{trip:JSON.stringify(item)}
-})}
->
-
-<Text style={styles.route}>
-{item.departure} → {item.destination}
-</Text>
-
-<Text style={styles.meta}>
-{item.date} • {item.time}
-</Text>
-
-<Text style={styles.meta}>
-{item.price} FCFA • {item.seats} place(s)
-</Text>
-
-<Text style={[styles.status,{color:status.color}]}>
-{status.label}
-</Text>
-
-</TouchableOpacity>
-
-)
-
-}
-
-if(loading){
-
-return(
-<View style={globalStyles.screen}>
-<ActivityIndicator
-size="large"
-color={COLORS.primary}
-/>
-</View>
-)
-
-}
-
-return(
-
-<View style={globalStyles.screen}>
-
-<Text style={styles.title}>
-Mes trajets
-</Text>
-
-<FlatList
-data={trips}
-keyExtractor={(item)=>String(item.id)}
-renderItem={renderTrip}
-refreshControl={
-<RefreshControl
-refreshing={refreshing}
-onRefresh={handleRefresh}
-/>
-}
-ListEmptyComponent={
-<Text style={styles.empty}>
-Aucun trajet publié pour le moment
-</Text>
-}
-contentContainerStyle={{paddingBottom:40}}
-/>
-
-</View>
-
-)
-
+    </View>
+  );
 }
 
 const styles = StyleSheet.create({
-
-title:{
-fontSize:26,
-color:COLORS.textLight,
-textAlign:"center",
-marginBottom:20,
-fontWeight:"600"
-},
-
-card:{
-backgroundColor:"#D1D1D1",
-borderRadius:14,
-padding:16,
-marginBottom:14
-},
-
-route:{
-fontSize:16,
-fontWeight:"600",
-marginBottom:6
-},
-
-meta:{
-fontSize:14,
-color:"#333",
-marginBottom:4
-},
-
-status:{
-marginTop:6,
-fontSize:13,
-fontWeight:"600"
-},
-
-empty:{
-textAlign:"center",
-marginTop:40,
-color:COLORS.textMuted
-}
-
-})
+  center: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center"
+  },
+  title: {
+    fontSize: 26,
+    color: COLORS.textLight,
+    textAlign: "center",
+    marginBottom: 20,
+    fontWeight: "600"
+  },
+  card: {
+    backgroundColor: "#1F2937",
+    borderRadius: 14,
+    padding: 16,
+    marginBottom: 14
+  },
+  route: {
+    fontSize: 16,
+    fontWeight: "700",
+    marginBottom: 8,
+    color: "#fff"
+  },
+  meta: {
+    fontSize: 14,
+    color: COLORS.textMuted,
+    marginBottom: 4
+  },
+  status: {
+    marginTop: 8,
+    fontSize: 13,
+    fontWeight: "600"
+  },
+  empty: {
+    textAlign: "center",
+    marginTop: 40,
+    color: COLORS.textMuted,
+    fontSize: 16
+  }
+});
