@@ -119,6 +119,16 @@ app.post("/api/auth/login", (req, res) => {
     });
   });
 });
+// Récupérer tous les trajets disponibles (public)
+app.get("/api/client/trajets", (req, res) => {
+  db.query("SELECT * FROM trajets ORDER BY heure DESC", (err, results) => {
+    if (err) {
+      console.error("❌ Erreur GET /api/client/trajets:", err);
+      return res.status(500).json({ message: "Erreur serveur" });
+    }
+    res.json(results);
+  });
+});
 
 app.post("/api/client/trajets", authenticate, (req, res) => {
   const { depart, destination, date_depart, heure_depart, places } = req.body;

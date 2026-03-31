@@ -15,7 +15,7 @@ import { Magnetometer } from "expo-sensors";
 
 import { API_URL } from "../../src/services/api";
 
-const GOOGLE_MAPS_KEY = "AIzaSyDfq25kW4d-Td3LZeM3HUO38XGcyxRxkE8";
+const GOOGLE_MAPS_KEY = process.env.EXPO_PUBLIC_GOOGLE_MAPS_KEY ?? "";
 
 export default function TripReservationScreen() {
 
