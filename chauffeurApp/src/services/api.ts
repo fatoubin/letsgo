@@ -38,29 +38,20 @@ export async function getUser(): Promise<any | null> {
 ========================= */
 
 export async function login(email: string, password: string) {
-
   const response = await fetch(`${API_URL}/api/auth/login`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Accept: "application/json"
-    },
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
     body: JSON.stringify({ email, password })
   });
 
   const text = await response.text();
-
-  if (!response.ok) {
-    throw new Error("Erreur connexion");
-  }
+  if (!response.ok) throw new Error("Erreur connexion");
 
   const data = JSON.parse(text);
-
   if (data.token) {
     await saveToken(data.token);
     await saveUser(data.user);
   }
-
   return data;
 }
 
@@ -74,9 +65,7 @@ export async function logout() {
 ========================= */
 
 export async function fetchWithAuth(endpoint: string, options: RequestInit = {}) {
-
   const token = await getToken();
-
   if (!token) throw new Error("Non authentifié");
 
   const response = await fetch(`${API_URL}${endpoint}`, {
@@ -89,9 +78,9 @@ export async function fetchWithAuth(endpoint: string, options: RequestInit = {})
   });
 
   const text = await response.text();
-
   if (!response.ok) {
-    throw new Error("Erreur serveur");
+    const errData = text ? JSON.parse(text) : {};
+    throw new Error(errData.message || "Erreur serveur");
   }
 
   return text ? JSON.parse(text) : null;
@@ -113,7 +102,7 @@ export async function getDriverTrips(driverId: number) {
   return fetchWithAuth(`/api/driver/my_trips?driver_id=${driverId}`);
 }
 
-export async function createTrip(payload: {
+export async function createDriverTrip(payload: {
   driverId: number;
   departure: string;
   destination: string;
@@ -128,10 +117,25 @@ export async function createTrip(payload: {
   });
 }
 
-export async function updat(payload: any) {
-  return fetchWithAuth("/api/trips/update", {
+// ── Modifier un trajet ──
+export async function updateTrip(payload: {
+  trip_id: number;
+  departure?: string;
+  destination?: string;
+  heure?: string;
+  seats?: number;
+}) {
+  return fetchWithAuth("/api/trips/update", {   // ✅ bonne route
     method: "POST",
     body: JSON.stringify(payload)
+  });
+}
+
+// ── Supprimer un trajet ──
+export async function deleteTrip(tripId: number) {
+  return fetchWithAuth("/api/trips/delete", {   // ✅ route à ajouter au backend
+    method: "POST",
+    body: JSON.stringify({ trip_id: tripId })
   });
 }
 
@@ -143,23 +147,19 @@ export async function getDriverRequests(driverId: number) {
   return fetchWithAuth(`/api/trips/driver_requests?driver_id=${driverId}`);
 }
 
+// ── Accepter une réservation ──
 export async function acceptReservation(reservationId: number) {
-  return fetchWithAuth("/api/trips/reservation_action", {
+  return fetchWithAuth("/api/trips/accept_reservation", {  // ✅ bonne route
     method: "POST",
-    body: JSON.stringify({
-      reservation_id: reservationId,
-      status: "accepted"
-    })
+    body: JSON.stringify({ reservation_id: reservationId })
   });
 }
 
+// ── Refuser une réservation ──
 export async function rejectReservation(reservationId: number) {
-  return fetchWithAuth("/api/trips/reservation_action", {
+  return fetchWithAuth("/api/trips/reject_reservation", {  // ✅ bonne route
     method: "POST",
-    body: JSON.stringify({
-      reservation_id: reservationId,
-      status: "rejected"
-    })
+    body: JSON.stringify({ reservation_id: reservationId })
   });
 }
 
@@ -179,51 +179,20 @@ export async function getDriverHistory(driverId: number) {
    📍 TRACKING CHAUFFEUR
 ========================= */
 
-export async function updateDriverLocation(
-  driverId: number,
-  lat: number,
-  lng: number
-) {
+export async function updateDriverLocation(driverId: number, lat: number, lng: number) {
   return fetchWithAuth("/api/driver/update_location", {
     method: "POST",
-    body: JSON.stringify({
-      driver_id: driverId,
-      lat,
-      lng
-    })
+    body: JSON.stringify({ driver_id: driverId, lat, lng })
   });
 }
 
-
-// ==============================
-// 🚚 TRAJETS CHAUFFEUR
-// ==============================
-
-export async function createDriverTrip(payload: {
-  driverId: number
-  departure: string
-  destination: string
-  date: string
-  time: string
-  seats: number
-  price: number
-}) {
-  return fetchWithAuth("/api/trips/create", {
-    method: "POST",
-    body: JSON.stringify(payload),
-  });
-}
 /* =========================
    TEST API
 ========================= */
 
 export async function testConnection() {
-
   const response = await fetch(`${API_URL}/api/test`);
-
   const text = await response.text();
-
   if (!response.ok) throw new Error("API offline");
-
   return JSON.parse(text);
 }

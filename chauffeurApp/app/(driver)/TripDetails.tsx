@@ -15,8 +15,12 @@ import { useRouter, useLocalSearchParams } from "expo-router";
 import { COLORS } from "../../src/styles/colors";
 import { globalStyles } from "../../src/styles/globalStyles";
 import PrimaryButton from "../../src/components/PrimaryButton";
-import { acceptReservation, rejectReservation } from "../../src/services/api";
-import { API_URL } from "../../src/services/api";
+import {
+  API_URL,
+  acceptReservation,
+  rejectReservation,
+  deleteTrip
+} from "../../src/services/api";
 
 type Reservation = {
   id: number;
@@ -32,7 +36,6 @@ export default function DriverTripDetailScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
 
-  // trip passé en JSON depuis TripScreen
   const trip = params?.trip ? JSON.parse(params.trip as string) : null;
 
   const [reservations, setReservations] = useState<Reservation[]>([]);
@@ -41,14 +44,12 @@ export default function DriverTripDetailScreen() {
   useEffect(() => {
     if (!trip?.id) { setLoading(false); return; }
     fetchReservations();
-  }, [trip]);
+  }, []);
 
   const fetchReservations = async () => {
     try {
       const res = await fetch(`${API_URL}/api/trips/driver_requests`, {
-        headers: {
-          "Content-Type": "application/json"
-        }
+        headers: { "Content-Type": "application/json" }
       });
       const data = await res.json();
       console.log("📥 RESERVATIONS =", JSON.stringify(data));
@@ -80,6 +81,31 @@ export default function DriverTripDetailScreen() {
     }
   };
 
+  // ── Supprimer le trajet ──
+  const handleDelete = () => {
+    Alert.alert(
+      "Suppression",
+      "Voulez-vous supprimer ce trajet ?",
+      [
+        { text: "Annuler", style: "cancel" },
+        {
+          text: "Supprimer",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await deleteTrip(trip.id);
+              Alert.alert("✅ Succès", "Trajet supprimé", [
+                { text: "OK", onPress: () => router.back() }
+              ]);
+            } catch (e: any) {
+              Alert.alert("Erreur", e.message || "Suppression impossible");
+            }
+          }
+        }
+      ]
+    );
+  };
+
   const renderStatus = (status: string) => {
     if (status === "accepted") return <Text style={[styles.statusBadge, styles.accepted]}>Acceptée</Text>;
     if (status === "rejected") return <Text style={[styles.statusBadge, styles.rejected]}>Refusée</Text>;
@@ -99,7 +125,6 @@ export default function DriverTripDetailScreen() {
 
       <Text style={styles.title}>Détails du trajet</Text>
 
-      {/* ── Infos trajet (champs du backend) ── */}
       <View style={styles.card}>
         <Text style={styles.label}>Départ</Text>
         <Text style={styles.value}>{trip.depart}</Text>
@@ -113,17 +138,25 @@ export default function DriverTripDetailScreen() {
         <Text style={styles.label}>Places disponibles</Text>
         <Text style={styles.value}>{trip.places}</Text>
 
-        <TouchableOpacity
-  style={styles.edit}
-  onPress={() =>
-    router.push({
-      pathname: "/(driver)/TripEdit",
-      params: { trip: JSON.stringify(trip) }
-    })
-  }
->
-  <Text style={styles.actionText}>Modifier</Text>
-</TouchableOpacity>
+        {/* ── Boutons Modifier / Supprimer ── */}
+        <View style={styles.cardActions}>
+          <TouchableOpacity
+            style={styles.editBtn}
+            onPress={() => router.push({
+              pathname: "/(driver)/TripEdit",
+              params: { trip: JSON.stringify(trip) }
+            })}
+          >
+            <Text style={styles.actionText}>✏️ Modifier</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.deleteBtn}
+            onPress={handleDelete}
+          >
+            <Text style={styles.actionText}>🗑 Supprimer</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       <PrimaryButton
@@ -131,7 +164,7 @@ export default function DriverTripDetailScreen() {
         style={{ marginTop: 20 }}
         onPress={() => router.push({
           pathname: "/(driver)/TripMap",
-          params: { trip: JSON.stringify(trip) }  // ← passer trip complet
+          params: { trip: JSON.stringify(trip) }
         })}
       />
 
@@ -157,7 +190,6 @@ export default function DriverTripDetailScreen() {
               <Text style={styles.resInfo}>💺 {item.places} place(s)</Text>
 
               <View style={styles.actions}>
-
                 <TouchableOpacity
                   style={styles.callButton}
                   onPress={() => item.telephone && Linking.openURL(`tel:${item.telephone}`)}
@@ -182,7 +214,6 @@ export default function DriverTripDetailScreen() {
                     </TouchableOpacity>
                   </>
                 )}
-
               </View>
 
             </View>
@@ -201,6 +232,9 @@ const styles = StyleSheet.create({
   label: { fontSize: 13, color: COLORS.textMuted, marginTop: 12 },
   value: { fontSize: 16, fontWeight: "600", color: "#fff", marginTop: 2 },
   text: { color: COLORS.textMuted },
+  cardActions: { flexDirection: "row", gap: 10, marginTop: 16 },
+  editBtn: { backgroundColor: "#3B82F6", paddingVertical: 8, paddingHorizontal: 16, borderRadius: 10 },
+  deleteBtn: { backgroundColor: COLORS.danger, paddingVertical: 8, paddingHorizontal: 16, borderRadius: 10 },
   sectionTitle: { color: COLORS.textLight, fontSize: 18, marginTop: 30, marginBottom: 10, fontWeight: "600" },
   empty: { color: COLORS.textMuted, textAlign: "center", marginTop: 10 },
   reservationCard: { backgroundColor: "#fff", borderRadius: 12, padding: 14, marginBottom: 10 },
@@ -216,11 +250,5 @@ const styles = StyleSheet.create({
   callText: { color: "#fff", fontWeight: "600" },
   accept: { backgroundColor: COLORS.success, paddingVertical: 6, paddingHorizontal: 12, borderRadius: 20 },
   reject: { backgroundColor: COLORS.danger, paddingVertical: 6, paddingHorizontal: 12, borderRadius: 20 },
-  actionText: { color: "#fff", fontWeight: "600" },
-  edit:{
-  backgroundColor:"#3B82F6",
-  paddingVertical:8,
-  paddingHorizontal:14,
-  borderRadius:10
-}
+  actionText: { color: "#fff", fontWeight: "600" }
 });
