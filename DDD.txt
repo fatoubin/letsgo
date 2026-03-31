@@ -1,0 +1,826 @@
+toute les lignes dakar dem dikk
+
+LIGNE 1 : PARCELLES ASSAINIES <--> PLACE LECLERC
+–Terminus Parcelles Assainies
+– Sapeur Pompiers
+– Unités 09 10 15
+– Ecole Dior
+– Terrain Acapes
+– Unités 22 24
+– Marché Grand Médine
+– Rond point 26
+– VDN-Foire
+– Cité Keur Gorgui
+– Ecole Normale
+– Ucad
+– Rond point Sham
+– Marché Tilène
+– Poste Médina
+– Difoncé
+– Sandaga
+– Avenue George Pompidou
+– Place de l’Indépendance
+– Gare TER
+– Embarcadère
+– Terminus Leclerc
+
+LIGNE 4 : LIBERTÉ 5 <--> PLACE LECLERC
+–Terminus Liberté 5 (Dieuppeul) – Cité Derklé
+– Rond point Liberté 6
+– Khar Yalla
+– Cité Marine
+– CEM Dieuppeul 3
+– Eglise Martyrs de l’ouganda
+– SDE
+– Collège Sacré Cœur
+– Sicap Karack
+– Point E
+– Université Amphate BA
+– Canal 4
+– Marché Fass
+– Gueule Tapée
+– Rond Point Sham
+– Marché Tilène
+– Poste Médina
+– Difoncé
+– Sandaga
+– ASECNA
+– Boulevard de la République
+– Avenue Léopold Sédar Senghor
+– Place de l’Indépendance
+– Gare TER
+– Embarcadère
+– Terminus Leclerc.
+
+LIGNE 7 : OUAKAM <--> PALAIS 2
+–Terminus Ouakam
+– Cité Assemblée
+– Cité Comico
+– Sortie Ouakam
+– Hopital IHO
+– Mermoz
+– ENEA
+– Ecole Normale
+– UCAD
+– Rond point Sham
+– Marché Tilen
+– Poste Médina
+– Difoncé
+– Sandaga
+– Avenue George Pompidou
+– Place de l’Indépendance
+– Avenue Léopold Sédar Senghor
+– Hopitale Principale
+– Rond point assemblée nationale
+– Institut pasteur
+– Terminus Palais 2
+
+LIGNE 8 : AEROPORT LSS <--> PALAIS 2
+–Terminus Aéroport LSS
+– Cité Asecna
+– Yoff Village
+– Pond Foire
+– Stade Léopold Sédar Senghor – Patte d’Oie
+– Grand Yoff
+– Hopital Général Idrissa Pouye (Ex CTO )
+– Cité des Eaux
+– Station Castor
+– Avenue Bourguiba
+–Jet d’eau
+– Stade demba Diop
+– Dial Diop (ex rue 10)
+– Zone B
+– Point E
+– UCAD
+– Rond point Sham
+– Marché Tilen
+– Poste Médina
+– Difoncé
+– Sandaga
+– ASECNA
+– Bld de la République
+– Avenue Léopold Sédar Senghor
+– Hopitale Principale
+– Rond point Assemblée Nationale
+– Institut Pasteur
+– Terminus Palais 2
+
+LIGNE 9 : LIBERTÉ 6 <--> PALAIS 2
+–Terminus Liberté 6
+– Rond Point JVC
+– Sacré Cœur
+– IPG
+– Terminus Dieuppeul
+– Allées Ababacar Sy
+– Rond Point Jet d’Eau
+– Niary Tally
+– Eglise Sainte Thérèse
+– Lycée Blaise Diagne
+– Lycée Kenedy
+– Obelisque
+– Centenaire
+– Rond point RTS
+– Poste Médina
+ – Difoncé
+– Sandaga
+– Avenue George Pompidou
+– Place de l’Indépendance
+– Avenue Léopold Sédar Senghor
+– Hopitale Principale
+– Rond point assemblée nationale
+– Institut pasteur
+– Terminus Palais 2
+
+LIGNE 10 : LIBERTÉ 5 <--> PALAIS 2
+–Terminus liberté 5 (Dieuppeul)
+– Cité Derklé
+– Rond point Liberté 6
+– Khar Yalla
+– Cité Marine
+– CEM Ousmane Socé Diop
+– Eglise Martyrs de l’Ouganda
+– SDE
+– Dakar sacré coeur
+– Stade Demba Diop
+–  Avenue Bourguiba
+– Ecole Normale
+– Poste Fann
+– Rue Aimé césaire
+– Ministère de la Santé
+– Corniche Ouest
+– IFAN
+– Hotel Terrou
+– Tunnel de soumbédioune
+– Village Artisanal de Soumbédioune
+– Prison Rebeus
+– Turbinal de dakar
+– Boulevard de la République
+– Sorano
+– Avenue Léopold Sédar Senghor
+– Hopitale Principale
+– Rond point assemblée nationale
+– Institut Pasteur
+– Terminus Palais 2
+
+LIGNE 13 : LIBERTÉ 5 <--> PALAIS 2
+–Terminus liberté 5 (Dieuppeul)
+– Avenue Cheikh Ahmadou Bamba (ex rue 13 Prolongée)
+– Station Castors
+– Marché HLM
+– Ouagou Niayes
+– BOP
+– Masalikul Djinane
+– CSS
+– Lycée Kennedy
+– Boulevard Général De Gaule
+– Centenaire
+– RTS
+– Grande mosquée
+– Allées Papa Guèye Fall
+– Petersen
+– Avenue Faidherbe
+– Esso Port
+– Gare de Dakar
+– Place de l’Indépendance
+– Avenue Léopold Sédar Senghor
+– Hopitale Principale
+– Rond point assemblée nationale
+– Institut pasteur
+– Terminus Palais 2
+
+LIGNE 18 : DIEUPPEUL <--> CENTRE-VILLE
+–Terminus Liberté 5 (Dieuppeul) – Cité Derklé
+– Rond Point Liberté 6
+– Khar Yalla
+– Cité Marine
+– Avenue Cheikh Ahmadou Bamba (ex rue 13 Prolongée)
+– Station Castors
+– Marché HLM
+– Ouagou Niayes
+– BOP
+– Masalikul Djinane
+– CSS
+– Colobane
+– Service des mines
+– Place BAKOU
+– Police Bel Air
+– Grand Moulin de Dakar
+– Bel Air
+– Arsanel
+– Gare de dakar
+– Esso Port
+– Place de l’Indépendance
+– Avenue Georges Pompidou
+– Rond point Sandaga
+– Avenue André Peytavin
+– Lat Dior
+– Route de la Corniche
+– Reubeuss
+– Mosquée Seydou Nourrou Tall – DAF
+– Rue 6
+– Médina
+– Gueule Tapée
+– Lycée Delafosse
+– Canal 4
+– Rond point Sham
+– Avenue Cheikh Anta Diop
+– Ecole Normale Supérieure
+– Avenue Bourguiba
+– Stade Demba DIOP
+– Rond Point Jet d’eau
+– Allées Ababacar Sy
+– Terminus Liberté 5 (Dieuppeul).
+
+LIGNE 20 : DIEUPPEUL <--> CENTRE-VILLE
+–Terminus Dieuppeul
+– Allées Ababacar Sy
+– Jet d’Eau
+– Avenue Bourguiba
+– Stade Demba Diop
+– Ecole Normale
+– Poste Fann
+– Avenue Cheikh Anta Diop
+–  UCAD
+– Canal 4
+– Lycée Delafosse
+– Gueule Tapée
+– Rue 6
+– Médina
+– DAF
+– Mosquée seydou Nourrou Tall
+– Reubeuss
+– Lat Dior
+– Avenue Peytavin
+– Rond point Sandaga
+– Avenue Gorges Pompidou
+– Place de l’Indépendance
+– Gare Ter
+–  Esso Port
+– Boulevard de l’Arsenal
+– Central Bel Air (MTOA)
+– Grands Moulin de Dakar
+– Police Bel Air
+– Service des Mines
+– Colobane
+– CSS
+– Masalikul Djinane
+– Cité Port
+– Ouagou niayes
+– Marché HLM
+– Station Castors
+– Avenue Cheikh Ahmadou Bamba
+– Cité Marine
+– Khar Yalla
+– Rond Point LIBERTE6
+– Cité Derklé
+– Terminus Dieuppeul
+
+LIGNE 23 : PARCELLES ASSAINIES <--> PALAIS 1
+–Terminus des Parcelles
+– Ecole Dior
+–  Diamalaye
+– Hlm Grand Médine
+– Dior  
+– Acapes
+– Dispensaire Norade
+– Hopital Mame Abdou
+– Eglise
+– Unité 11
+– Croisement 22
+– Police Parcelles
+– Pont Emergent
+– Ecole Hyacinthe Thiandoum
+– Rond point Liberté 6
+– Khar Yalla
+– Front de Terre
+– Cité des Eaux
+– Station castor
+– Avenue Bourguiba
+– Stade Demba Diop
+– Ecole Normale
+– Poste Fann
+– Avenue Cheikh Anta Diop
+– UCAD
+– Rond Point  Sahm
+– Canal 4
+– Gueule Tapée
+– Rue 6
+– DAF
+– Poste Médina
+– Difoncé
+– Sandaga
+– ASECNA
+– Bld de la République
+– Avenue Léopold Sédar Senghor
+– Hopitale Principale
+– Rond point assemblée nationale
+– Institut Pasteur
+– Terminus Palais 2
+
+LIGNE 121 : SCAT URBAM <--> LECLERC
+–Terminus Scat Urban
+– Mairie Grand Yoff
+– Pentola
+– Les deux voies de Sipres
+– Camp penal
+– Les deux voies de Liberté 6
+– Rond point JVC
+– Boulangerie Zone
+– Collège Sacré Cœur
+– Scor liberté
+– Sicap rue 10
+– Lycée Blaise Diagne
+– Place ONU
+– Canal 4
+– HLM Fass
+– Travaux communaux
+– Rue 22 prolongée
+– RTS
+– Allées Papa Guèye Fall
+– Petersen
+– Avenue Faidherbe
+– Place de l’indépendance
+– Albert Sarraut
+– BCEAO
+– Terminus Leclerc
+
+LIGNE 319 : LIBERTÉ 6 <--> OUAKAM
+–Terminus liberté 6
+– Rond Point Liberté 6
+– Deux voies liberté 6
+– Rond point JVC
+– Boulangerie Jaune
+– Immeuble Mariama
+– Rond point Cheikh Bethio
+– Ancien Piste
+– IHO
+– Entrée ouakam
+– Pharmacie cité Aviaon
+– Pharmacie Mame Seynabou
+– Case des tous petit
+– Station shell
+– Lycée d’excellence privée
+– Boulangerie N’wely
+– Terminus Ouakam
+
+LIGNE TAF TAF OUAKAM (TO1) : OUAKAM <--> PALAIS 2
+–Terminus Ouakam
+– Brioche d’orée Ouakam
+– Monument de la Renaissance
+– Corniche ouest
+– Avenue Peytavin
+– Avenue Pompidou
+– Place de l’Indépendance
+– Avenue Léopold Sédar Senghor
+– Avenue Nelson Mandela
+– Palais 2
+
+LIGNE 501 : PALAIS 2 <--> LECLERCL
+–Terminus Palais 2
+– Avenue Nelson Mandela
+– Avenue Léopold Sédar Senghor
+– Place de l’Indépendance
+– Esso Port Embarcadère
+– Terminus Leclerc
+
+LIGNE 502 : GARE DE GARE <--> GARE DE GARE
+– Gare colobane
+– Maison du partie
+– Hampathé Ba
+– UCAD
+– Lycee De Lafosse
+– Police 4em
+– Rond Point Sham
+– Gare Colobane
+
+LIGNE 503 : GARE DE GARE <--> GARE DE GARE
+– Gare de Colobane
+– Rond Point Bel
+– Air
+– Mole 8
+– Cité Isra
+– Zone industrielle
+– Service des mines
+– Gare de Colobane
+
+LIGNE TAF TAF
+– Terminus Ouakam
+– Mamelles
+– Croisement Almadies
+– Ngor
+– Yoff
+– Rte de l’Aéroport
+– Foire
+– VDN
+– Direction Générale DDD
+– Rond Point JVC
+– Rond Point Liberté 6
+– Itinéraire 213
+– Police Grand Yoff
+– Pharmacie Patte d’Oie
+– Autoroute à Péage
+– Diamniadio
+– AIBD
+
+LIGNE 2 : DAROUKHANE <--> PLACE LECLERC
+– Terminus Daroukhane
+– Corniche
+– Hamo
+– Terminus Guédiawaye
+– Marché Sahm
+– Ravin
+– Ecole Canada
+– Rte des Niayes
+– Tally Boumack
+– Bountou Pikine
+– Route Nationale n° 1
+– PEAGE Pikine
+– Cité des Eaux
+– Station Castors
+– Avenue Cheikh Ahmadou Bamba
+– Marché HLM
+– Masalikul Djinane
+– BOPP
+– Rond Point Colobane
+– Lycée Kennedy
+– Boulevard Général De Gaule
+– Obélisque
+– Rue 39
+– Douta Seck
+– Avenue Blaise Diagne
+– Poste Médina
+– Difoncé
+– Sandaga
+– Asecna
+– Boulevard de la République
+– Avenue Léopold Sédar Senghor
+– Place de l’Indépendance
+– Gare de dakar
+– Embarcadère
+– Terminus Leclerc
+
+LIGNE 5 : GUÉDIAWAYE <--> PALAIS 1
+– Terminus Guédiawaye
+– Marche Jeudi
+– Hôpital Dalal Diam
+– Case PA
+– Police de Parcelles Assainies – Pont Sénégal 92 (Pont de l’émergence)
+– Patte d’Oie
+– Autoroute
+– Intendance
+– Avenue Lamine Gueye
+– Avenue André Peytavin
+– Avenue Jean Jaurès (Direction Général ASCENA)
+– Boulevard de la République
+– Avenue Léopold Sédar Senghor
+– Avenue Nelson Mandela
+– Palais 1
+
+LIGNE 6 : GUÉDIAWAYE <--> PALAIS 1
+– Terminus Guédiawaye
+– Marche Jeudi
+– Hôpital Dalal Diam
+– Camberene
+– Case PA
+– Police de Parcelles Assainies – Marché Grand Médine
+– Rond point 26
+– Foire
+– Sipres
+– Rond point Liberté 6
+– Terminus Liberté 5
+– Allées Khalifa Ababacar Sy
+– Jet d’Eau
+– Niary Tally
+– Eglise Sainte Thérèse
+– ENA
+– Boulevard Général De Gaule
+– Allées Papa Gueye Fall
+– Avenue Faidherbe
+– Avenue Lamine Gueye
+– Avenue André Peytavin
+– Avenue Jean Jaurès
+– Boulevard de la République
+– Avenue Nelson Mandela
+– Palais 1
+
+LIGNE 11 : KEUR MASSAR <--> LAT DIOR
+– Terminus Keur Massar
+– Station Keur Massar
+– Croissement Keur Massar
+– Fass Mbao
+– Diamaguène
+– Poste Thiaroye
+– Autoroute a Peage
+– Corniche des Hlm
+– Colobane
+– Boulevard Général De Gaule (Centenaire)
+– RTS
+– Rond Point
+– Poste Médina
+– Blaise Diagne
+– Sandaga
+– Terminus Lat Dior
+
+LIGNE 12 : GUÉDIAWAYE <--> PALAIS 1
+– Terminus Guédiawaye
+– Lycée Canada
+– Tally Boubess
+– Marché Sandika
+– Bountou pikine
+– National 1
+– Croissement Camberene
+– Autoroute
+– Cité des Eaux
+– Station Castors
+– Avenue Bourguiba
+– Ecole Normale
+– Avenue Cheikh Anta Diop (Hôpital Fann)
+– Rond Point Sahm
+– Avenue Blaise Diagne
+– Avenue Jean Jaurès
+– Boulevard de la République
+– Avenue Léopold Sedar Senghor
+– Avenue Nelson Mandela
+– Palais 1
+
+LIGNE 15 : RUFISQUE <--> PALAIS 1
+– Terminus Rufisque
+– Djoutiba
+– Sortie Rufisque
+– Croissement Keur Massar
+– Fass Mbao
+– Diamaguène
+– Poste Thiaroye
+– Croisement Bountou Pikine
+– National 1
+– Croissement Camberene
+– autoroute
+– Colobane
+– SCOA
+– Esso Port
+– Place de l’Indépendance
+– Avenue Léopold Sédar Senghor
+– Avenue Nelson Mandela
+– Palais 1
+
+LIGNE 16A : MALIKA <--> PALAIS 1
+– Terminus Malika
+– Malika Plage
+– Terminus 221 (Gadaye)
+– Hamo
+– Terminus Guédiawaye
+– Marché Sahm
+– Ecole Canada
+– Icotaf
+– Cité Lobatt Fall
+– Rond Point Lobatt Fall
+– Autoroute
+– Colobane
+– Rond Point Colobane
+– Place Bakou
+– Cfao Technologies
+– Cyrnos
+– Arsenal
+– Place de l’Indépendance
+– Palais 1
+
+LIGNE 16B : MALIKA <--> PALAIS 1
+– Terminus Malika
+– Station Keur Massar
+– Croisement Keur Massar
+– LGI Mbao
+– Diamaguène
+– Thiaroye
+– Sips
+– Sotiba (seras)
+– Yarakh
+– Capa Virmaud
+– Place Bakou
+– (Scoa)
+– Police Bel Air
+– Bel Air
+– GMD
+– Sofrigal (môle 8)
+– Cyrnos (sur le pont)
+– Caserne Sapeurs Pompiers
+– Avenue Lamine Guèye (Sandaga)
+– Avenue André Peytavin
+– Avenue Jean Jaurès
+– Boulevard de la République
+– Avenue Léopold Sédar Senghor (Roume)
+– Hôpital Principal
+– Assemblée Nationale
+– Hôpital Le Dantec
+– Palais 1
+
+LIGNE 208 : BAYAKH <--> RUFISQUE
+– Gorom 01
+– Gororm 02
+– Bambilor
+– Noflaye
+– Sangalkam
+– Keur Ndiaye Lo
+– Rufisque
+
+LIGNE 213 : RUFISQUE <--> DIEUPPEUL
+– Gare de Rufisque
+– HLM SIPRES
+– ZAC Mbao
+– Rond Point Grand Mbao  
+– keur Mbaye Fall
+– Croisement Petit Mbao
+– Diamaguene
+– poste Thiaroye
+– péage
+– sortie Croissement Cambérène
+– Patte d’Oie
+– Marche Grand Yoff
+– Police Grand Yoff
+– Rond Point Liberté 6
+– 2 voies Liberté 6
+– Rond Point JVC
+– Terminus Dieuppeul
+
+LIGNE 217 : THIAROYE <--> OUAKAM
+– Dépôt Thiaroye
+– Sipses  
+– Bountou Pikine
+– patte d’oies
+– Foire
+– VDN
+– Sipres
+– ancienne piste
+– Ouakam
+– marché Ouakam
+– terminus Ouakam
+– route des mamelles
+– route des Almadies
+– Ngor
+– Terminus aéroport LSS
+
+LIGNE 218 : THIAROYE <--> AÉROPORT LSS
+– Dépôt Thiaroye
+– Sipses  
+– Bountou Pikine
+– patte d’oies
+– Foire
+– VDN
+– Sipres
+– ancienne piste
+– Ouakam
+– marché Ouakam
+– terminus Ouakam
+– route des mamelles
+– route des Almadies
+– Ngor
+– Terminus aéroport LSS
+
+LIGNE 219 : DAROUKHANE <--> OUAKAM
+– Daroukhane
+– marché Ndiarème
+– deux voies Notaire
+– Sapeur pompier Guédiawaye
+– Marché Jeudi corniche
+– Hôpital Dalal Diam
+– Case bi
+– Pont Sénégal 92
+– Collège Hyacinthe Thiandoum
+– Rond Point liberté 6
+– Rond Point JVC
+– Rond Point Boulangerie Jaune
+– Immeuble Mariama
+– Ancienne Piste
+– Hôpital militaire de Ouakam
+– Comico
+– Cité Asecna
+– Cité Assemblée
+– Terminus Ouakam
+
+LIGNE 220 : RUFISQUE <--> GUÉDIAWAYE
+– Terminus Rufisque
+– Djoutiba
+– HLM Rufisque
+– SIPRES
+– SEDIMA
+– Lycée Jaxaay
+– 2 voies
+– Jaxaay
+– Station Keur Massar
+– Terminus Malika
+– Malika Plage
+– gadaye
+– Serigne Assane
+– Marche boubess
+– Lycée Limamoulaye
+– Terminus Guediawaye
+
+LIGNE 221 : GADAYE <--> ALMADIES
+– Terminus Gadaye (Filaos)
+– Corniche Daroukhane
+– Hamo 6
+– Arrêt Dial Mbaye
+– PAI
+– Hôpital Dalal Diam
+– Case
+– Police PA
+– Pont Sénégal emergent (92)
+– Route de l’aéroport
+– Yoff Tonghor
+– Cite Asecna
+– Rond Point Ngor
+– Ngor village
+– Terminus Almadies
+
+LIGNE 227 : KEUR MASSAR <--> TERMINUS PARCELLES
+– Terminus Keur Massar
+– Tolou Abdoulaye Wade
+– Croissement Tivaoune Peulh
+– APIX
+– Malika plage
+– Police Wakhinane
+– Hamo6
+– Arrêt Dial Mbaye
+– Terminus Guediawaye
+– Stade Amadou Barry
+– CES Canada
+– Hôpital Dalal Diam
+– Case bi
+– Croisement 22
+– Eglise PA
+– Terminus Parcelles
+
+Ligne : RUFISQUE <--> YENNE
+– Terminus Rufisque
+– Ville de Rufisque
+– Bargny
+– Diamniadio Yenne
+
+LIGNE 232 : BAUX MARAICHERS <--> AEROPORT LSS
+– Baux Maraichers
+– Yarakh
+– Cafétéria
+– Hann Maristes
+– Cours Sainte Marie de Hann
+– Sortie Mariste
+– Usine des eaux
+– Front de terre
+– Khar Yalla
+– Rond Point Liberté 6
+– Deux voies vers Camp Leclerc
+– VDN
+– Foire
+– Yoff
+– Terminus Aéroport LSS
+
+LIGNE 233 : BAUX MARAICHERS <--> PALAIS 1
+– Baux Maraichers
+– Yarakh
+– Cafétéria
+– Hann Maristes
+– Cours Sainte Marie de Hann
+– Sortie Mariste
+– Usine des eaux
+– Front de terre
+– Khar Yalla
+– Rond Point Liberté 6
+– Deux voies vers Camp Leclerc
+– VDN
+– Foire
+– Yoff
+– Terminus Aéroport LSS
+
+LIGNE 234 : JAXAAY <--> LECLERC
+– TERMINUS JAXAAY (Mosquée Niakoul Rab)
+– Terminus 56
+– 2 voies Jaxaay
+– Station Keur Massar
+– Croisement Keur Massar
+– Fass Mbao
+– Diamagueune
+– Poste Thiaroye
+– Péage
+– Grand théâtre
+– Esso Port
+– Place de l’independace Avenue Sarraut
+– Leclerc
+
+LIGNE 311 : LAC ROSE <--> CROISSEMENT KEUR MASSAR
+– Lac rose croissement Niague
+– Croissement Tivaoune Peulh
+– Terminus keur Massar
+– Station Keur Massar
+– Croissement Keur Massar
+– Retour vers Lac Rose
+
+LIGNE 327 : KEUR MASSAR <--> TERMINUS PARCELLES
+– Terminus Keur Massar
+– Tolou Abdoulaye Wade
+– Croissement Tivaoune Peulh
+– APIX
+– Malika plage
+– Malibu
+– Hôpital Dalal Diam
+– Case bi
+– Croisement 22
+– Eglise PA
+– Terminus Parcelles
