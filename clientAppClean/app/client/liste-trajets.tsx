@@ -78,7 +78,7 @@ export default function ListeTrajets() {
 
             <TouchableOpacity
               style={styles.btn}
-              onPress={() => router.push(`/client/trajet/${item.id}`)}
+             onPress={() => router.push(`/client/details-trajets?id=${item.id}`)}
             >
               <Text style={styles.btnText}>Voir le trajet</Text>
             </TouchableOpacity>

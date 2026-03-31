@@ -299,7 +299,7 @@ export async function updateDemande(id: number, payload: {
 // lib/api.ts
 
 
-const GOOGLE_API_KEY = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY;
+const GOOGLE_API_KEY = process.env.EXPO_PUBLIC_GOOGLE_MAPS_KEY;
 // ... (gardez vos fonctions existantes : saveToken, login, register, fetchWithAuth, etc.)
 
 // ==============================
