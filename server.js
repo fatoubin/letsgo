@@ -438,33 +438,23 @@ app.post("/api/trips/reservation_action", authenticateDriver, (req, res) => {
 
 // ── Modifier un trajet ──
 app.post("/api/trips/update", authenticateDriver, (req, res) => {
-
   const { trip_id, departure, destination, heure, seats } = req.body;
-
-  if (!trip_id || !departure || !destination || !heure || !seats) {
-    return res.status(400).json({ message: "Champs manquants" });
-  }
+  if (!trip_id) return res.status(400).json({ message: "trip_id requis" });
 
   db.query(
-    `UPDATE trajets 
-     SET depart = ?, destination = ?, heure = ?, places = ?
+    `UPDATE trajets SET
+      depart = COALESCE(?, depart),
+      destination = COALESCE(?, destination),
+      heure = COALESCE(?, heure),
+      places = COALESCE(?, places)
      WHERE id = ?`,
     [departure, destination, heure, seats, trip_id],
     (err, result) => {
-
-      if (err) {
-        return res.status(500).json({ message: "Erreur serveur" });
-      }
-
-      if (result.affectedRows === 0) {
-        return res.status(404).json({ message: "Trajet introuvable" });
-      }
-
-      res.json({ success: true, message: "Trajet mis à jour" });
-
+      if (err) return res.status(500).json({ message: "Erreur mise à jour" });
+      if (result.affectedRows === 0) return res.status(404).json({ message: "Trajet introuvable" });
+      res.json({ message: "Trajet mis à jour" });
     }
   );
-
 });
 
 // ── Supprimer un trajet ──
