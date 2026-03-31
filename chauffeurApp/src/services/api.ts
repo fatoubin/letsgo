@@ -117,28 +117,26 @@ export async function createDriverTrip(payload: {
   });
 }
 
-// ── Modifier un trajet ──
+// ✅ CORRECTION: Modifier un trajet
 export async function updateTrip(payload: {
   trip_id: number;
-  departure?: string;
-  destination?: string;
-  heure?: string;
-  seats?: number;
+  departure: string;
+  destination: string;
+  heure: string;
+  seats: number;
 }) {
-  return fetchWithAuth("/api/trips/update", {   // ✅ bonne route
+  return fetchWithAuth("/api/trips/update", {
     method: "POST",
     body: JSON.stringify(payload)
   });
 }
 
-// ── Supprimer un trajet ──
+// ✅ CORRECTION: Supprimer un trajet
 export async function deleteTrip(tripId: number) {
-  return fetchWithAuth("/api/trips/delete", {   // ✅ route à ajouter au backend
-    method: "POST",
-    body: JSON.stringify({ trip_id: tripId })
+  return fetchWithAuth(`/api/trips/delete/${tripId}`, {
+    method: "DELETE"
   });
 }
-
 /* =========================
    📥 DEMANDES PASSAGERS
 ========================= */

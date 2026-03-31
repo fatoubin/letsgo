@@ -437,7 +437,7 @@ app.post("/api/trips/reservation_action", authenticateDriver, (req, res) => {
 
 
 // ── Modifier un trajet ──
-app.post("/api/trips/updateTrip", authenticateDriver, (req, res) => {
+app.post("/api/trips/update", authenticateDriver, (req, res) => {
 
   const { trip_id, departure, destination, heure, seats } = req.body;
 
