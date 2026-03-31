@@ -29,16 +29,16 @@ export default function HomeScreen() {
       {/* MENU DÉROULANT */}
       {showMenu && (
         <View style={styles.dropdown}>
-          <TouchableOpacity
-            style={styles.dropdownItem}
-            onPress={() => {
-              setShowMenu(false);
-              router.push("/client/mes-trajets");
-            }}
-          >
-            <Ionicons name="car-outline" size={18} color="#fff" />
-            <Text style={styles.dropdownText}>Mes trajets</Text>
-          </TouchableOpacity>
+       <TouchableOpacity
+  style={styles.dropdownItem}
+  onPress={() => {
+    setShowMenu(false);
+    router.push("/client/mes-planifications");
+  }}
+>
+  <Ionicons name="calendar-outline" size={18} color="#fff" />
+  <Text style={styles.dropdownText}>Mes planifications</Text>
+</TouchableOpacity>
 
           <TouchableOpacity
             style={styles.dropdownItem}
@@ -83,13 +83,13 @@ export default function HomeScreen() {
           Déplacez-vous plus simplement à Dakar
         </Text>
 
-        <View style={styles.row}>
+             <View style={styles.row}>
           <TouchableOpacity
             style={[styles.actionBtn, styles.primaryBtn]}
-            onPress={() => router.push("/client/trajet")}
+            onPress={() => router.push("/client/planifier")}
           >
             <Ionicons name="add" size={20} color="#fff" />
-            <Text style={styles.btnText}>Publier un trajet</Text>
+            <Text style={styles.btnText}>Planifier un trajet</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -100,31 +100,53 @@ export default function HomeScreen() {
             <Text style={styles.btnText}>Voir les trajets</Text>
           </TouchableOpacity>
         </View>
-      </View>
+          </View>
 
-      {/* TRANSPORT URBAIN */}
-      <View style={styles.card}>
-        <View style={styles.cardHeader}>
-          <Ionicons name="bus" size={22} color="#3DDC97" />
-          <Text style={styles.cardTitle}>Transport Urbain</Text>
-        </View>
+        
+      
 
-        <View style={styles.row}>
-          <TouchableOpacity
-            style={[styles.transportBtn, { backgroundColor: "#1E6F5C" }]}
-          >
-            <Ionicons name="map" size={22} color="#fff" />
-            <Text style={styles.btnText}>Lignes de bus</Text>
-          </TouchableOpacity>
+     {/* BUS URBAIN (Dakar) */}
+<View style={styles.card}>
+  <View style={styles.cardHeader}>
+    <Ionicons name="bus" size={22} color="#3DDC97" />
+    <Text style={styles.cardTitle}>Bus Urbain (Dakar)</Text>
+  </View>
+  <Text style={styles.cardSubtitle}>
+    Trouvez un itinéraire à l’intérieur de Dakar
+  </Text>
+  <TouchableOpacity
+    style={[styles.actionBtn, { backgroundColor: "#1E6F5C" }]}
+    onPress={() => router.push("/transport/recherche")}
+  >
+    <Ionicons name="map" size={22} color="#fff" />
+    <Text style={styles.btnText}>Rechercher un trajet</Text>
+  </TouchableOpacity>
+</View>
 
-          <TouchableOpacity
-            style={[styles.transportBtn, { backgroundColor: "#247B9E" }]}
-          >
-            <Ionicons name="location" size={22} color="#fff" />
-            <Text style={styles.btnText}>Suivi des bus</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
+{/* BUS INTERURBAIN (vers autres régions) */}
+<View style={styles.card}>
+  <View style={styles.cardHeader}>
+    <Ionicons name="bus-outline" size={22} color="#FFC107" />
+    <Text style={styles.cardTitle}>Bus Interurbain</Text>
+  </View>
+  <Text style={styles.cardSubtitle}>
+    Voyagez vers les autres régions (Mbour, Thiès, etc.)
+  </Text>
+  <TouchableOpacity
+    style={[styles.actionBtn, { backgroundColor: "#247B9E" }]}
+    onPress={() => router.push("/transport/interurbain")}
+  >
+    <Ionicons name="globe" size={22} color="#fff" />
+    <Text style={styles.btnText}>Rechercher un trajet</Text>
+  </TouchableOpacity>
+</View>
+
+<TouchableOpacity
+  style={[styles.actionBtn, { backgroundColor: "#FF9800" }]}
+  onPress={() => router.push("/test-autocomplete")}
+>
+  <Text style={styles.btnText}>Test Autocomplete</Text>
+</TouchableOpacity>
 
       {/* FAVORIS */}
       <View style={styles.card}>
