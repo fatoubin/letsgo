@@ -118,7 +118,7 @@ export default function DriverTripDetailScreen() {
         title="Voir l'itinéraire sur la carte"
         style={{ marginTop: 20 }}
         onPress={() => router.push({
-          pathname: "/(driver)/trip-map",
+          pathname: "/(driver)/TripMap",
           params: { trip: JSON.stringify(trip) }  // ← passer trip complet
         })}
       />

@@ -74,7 +74,7 @@ export default function DriverTripsScreen() {
       <TouchableOpacity
         style={styles.card}
         onPress={() => router.push({
-          pathname: "/(driver)/trip-detail",
+          pathname: "/(driver)/TripDetails",
           params: { trip: JSON.stringify(item) }
         })}
       >

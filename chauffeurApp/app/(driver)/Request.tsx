@@ -13,7 +13,9 @@ import * as SecureStore from "expo-secure-store";
 
 import { COLORS } from "../../src/styles/colors";
 import { globalStyles } from "../../src/styles/globalStyles";
-import { getDriverRequests, acceptReservation, rejectReservation } from "../../src/services/api";
+
+// ✅ API corrigée
+import { getDriverRequests, fetchWithAuth } from "../../src/services/api";
 
 type Request = {
   id: number;
@@ -23,8 +25,7 @@ type Request = {
   prenom: string;
   telephone: string;
   places: number;
-  date_depart: string;
-  heure_depart: string;
+  status: "pending" | "accepted" | "rejected";
 };
 
 export default function DriverRequestsScreen() {
@@ -52,7 +53,6 @@ export default function DriverRequestsScreen() {
     try {
       setLoading(true);
       const data = await getDriverRequests(id);
-      console.log("📥 REQUESTS =", JSON.stringify(data));
       setRequests(Array.isArray(data) ? data : []);
     } catch (error) {
       console.log("❌ DRIVER REQUESTS ERROR", error);
@@ -62,21 +62,41 @@ export default function DriverRequestsScreen() {
     }
   };
 
+  // ✅ ACCEPT
   const handleAccept = async (id: number) => {
     try {
-      await acceptReservation(id);
+      await fetchWithAuth("/api/trips/reservation_action", {
+        method: "POST",
+        body: JSON.stringify({
+          reservation_id: id,
+          status: "accepted"
+        })
+      });
+
       Alert.alert("✅ Succès", "Réservation acceptée");
+
       if (driverId) fetchRequests(driverId);
+
     } catch (e) {
       Alert.alert("Erreur", "Action impossible");
     }
   };
 
+  // ✅ REJECT
   const handleReject = async (id: number) => {
     try {
-      await rejectReservation(id);
+      await fetchWithAuth("/api/trips/reservation_action", {
+        method: "POST",
+        body: JSON.stringify({
+          reservation_id: id,
+          status: "rejected"
+        })
+      });
+
       Alert.alert("Refusée", "Réservation refusée");
+
       if (driverId) fetchRequests(driverId);
+
     } catch (e) {
       Alert.alert("Erreur", "Action impossible");
     }
@@ -97,28 +117,44 @@ export default function DriverRequestsScreen() {
         📞 {item.telephone}
       </Text>
 
-      <Text style={styles.info}>
-        🗓 {item.date_depart} à {item.heure_depart}
-      </Text>
+      {/* ⚠️ date/heure supprimé car backend ne les envoie pas */}
 
       <Text style={styles.info}>
         💺 {item.places} place(s) demandée(s)
       </Text>
 
       <View style={styles.actions}>
-        <TouchableOpacity
-          style={styles.accept}
-          onPress={() => handleAccept(item.id)}
-        >
-          <Text style={styles.actionText}>✓ Accepter</Text>
-        </TouchableOpacity>
 
-        <TouchableOpacity
-          style={styles.reject}
-          onPress={() => handleReject(item.id)}
-        >
-          <Text style={styles.actionText}>✕ Refuser</Text>
-        </TouchableOpacity>
+        {item.status === "pending" && (
+          <>
+            <TouchableOpacity
+              style={styles.accept}
+              onPress={() => handleAccept(item.id)}
+            >
+              <Text style={styles.actionText}>✓ Accepter</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.reject}
+              onPress={() => handleReject(item.id)}
+            >
+              <Text style={styles.actionText}>✕ Refuser</Text>
+            </TouchableOpacity>
+          </>
+        )}
+
+        {item.status === "accepted" && (
+          <Text style={[styles.actionText, { color: COLORS.success }]}>
+            ✔ Acceptée
+          </Text>
+        )}
+
+        {item.status === "rejected" && (
+          <Text style={[styles.actionText, { color: COLORS.danger }]}>
+            ✖ Refusée
+          </Text>
+        )}
+
       </View>
 
     </View>

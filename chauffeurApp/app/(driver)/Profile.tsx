@@ -11,16 +11,18 @@ import { useLocalSearchParams } from "expo-router";
 
 import { COLORS } from "../../src/styles/colors";
 import { globalStyles } from "../../src/styles/globalStyles";
-import { API_URL } from "../../src/services/api";
+
+// ✅ API sécurisée
+import { fetchWithAuth } from "../../src/services/api";
 
 type Driver = {
-  id?: number
-  fullname?: string
-  status?: string
-  brand?: string
-  plate_number?: string
+  nom?: string
+  prenom?: string
+  telephone?: string
+  residence?: string
+  vehicle_type?: string
+  vehicle_plate?: string
   seats?: number
-  license_type?: string
 }
 
 export default function DriverProfileScreen() {
@@ -42,15 +44,11 @@ export default function DriverProfileScreen() {
 
       try{
 
-        const res = await fetch(
-          `${API_URL}/api/driver/profile?driverId=${driverId}`
+        const data = await fetchWithAuth(
+          `/api/driver/profile?driver_id=${driverId}`
         )
 
-        const data = await res.json()
-
-        if(data?.success){
-          setDriver(data.driver)
-        }
+        setDriver(data)
 
       }catch(e){
         console.log("PROFILE ERROR",e)
@@ -103,15 +101,15 @@ export default function DriverProfileScreen() {
         </Text>
 
         <Text style={styles.value}>
-          {driver?.fullname || "Non défini"}
+          {driver?.prenom} {driver?.nom}
         </Text>
 
         <Text style={styles.label}>
-          Statut
+          Téléphone
         </Text>
 
         <Text style={styles.value}>
-          {driver?.status || "Inconnu"}
+          {driver?.telephone || "Non défini"}
         </Text>
 
       </View>
@@ -123,11 +121,11 @@ export default function DriverProfileScreen() {
         </Text>
 
         <Text style={styles.label}>
-          Marque
+          Type
         </Text>
 
         <Text style={styles.value}>
-          {driver?.brand || "Non défini"}
+          {driver?.vehicle_type || "Non défini"}
         </Text>
 
         <Text style={styles.label}>
@@ -135,7 +133,7 @@ export default function DriverProfileScreen() {
         </Text>
 
         <Text style={styles.value}>
-          {driver?.plate_number || "Non définie"}
+          {driver?.vehicle_plate || "Non définie"}
         </Text>
 
         <Text style={styles.label}>
@@ -144,14 +142,6 @@ export default function DriverProfileScreen() {
 
         <Text style={styles.value}>
           {driver?.seats ?? "?"}
-        </Text>
-
-        <Text style={styles.label}>
-          Type permis
-        </Text>
-
-        <Text style={styles.value}>
-          {driver?.license_type || "Non défini"}
         </Text>
 
       </View>
@@ -203,4 +193,4 @@ fontWeight:"600",
 marginTop:2
 }
 
-})
+});

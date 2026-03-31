@@ -9,6 +9,9 @@ import {
 
 import { useRouter } from "expo-router";
 
+// ✅ IMPORT LOGOUT
+import { logout } from "../../src/services/api";
+
 import { COLORS } from "../../src/styles/colors";
 import { globalStyles } from "../../src/styles/globalStyles";
 
@@ -25,8 +28,17 @@ export default function DriverSettingsScreen() {
         { text: "Annuler" },
         {
           text: "Oui",
-          onPress: () => {
-            router.replace("/welcome");
+          onPress: async () => {
+            try {
+              // ✅ Suppression token + user
+              await logout();
+
+              // ✅ Redirection propre
+              router.replace("/welcome");
+
+            } catch (error) {
+              Alert.alert("Erreur", "Impossible de se déconnecter");
+            }
           }
         }
       ]

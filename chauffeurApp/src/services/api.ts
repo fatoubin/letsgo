@@ -73,7 +73,7 @@ export async function logout() {
    AUTH FETCH
 ========================= */
 
-async function fetchWithAuth(endpoint: string, options: RequestInit = {}) {
+export async function fetchWithAuth(endpoint: string, options: RequestInit = {}) {
 
   const token = await getToken();
 
@@ -144,16 +144,22 @@ export async function getDriverRequests(driverId: number) {
 }
 
 export async function acceptReservation(reservationId: number) {
-  return fetchWithAuth("/api/trips/accept_reservation", {
+  return fetchWithAuth("/api/trips/reservation_action", {
     method: "POST",
-    body: JSON.stringify({ reservation_id: reservationId })
+    body: JSON.stringify({
+      reservation_id: reservationId,
+      status: "accepted"
+    })
   });
 }
 
 export async function rejectReservation(reservationId: number) {
-  return fetchWithAuth("/api/trips/reject_reservation", {
+  return fetchWithAuth("/api/trips/reservation_action", {
     method: "POST",
-    body: JSON.stringify({ reservation_id: reservationId })
+    body: JSON.stringify({
+      reservation_id: reservationId,
+      status: "rejected"
+    })
   });
 }
 
@@ -202,7 +208,7 @@ export async function createDriverTrip(payload: {
   seats: number
   price: number
 }) {
-  return fetchWithAuth("/api/driver/trips", {
+  return fetchWithAuth("/api/trips/create", {
     method: "POST",
     body: JSON.stringify(payload),
   });

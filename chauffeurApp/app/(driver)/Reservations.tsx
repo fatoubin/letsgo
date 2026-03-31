@@ -15,15 +15,18 @@ import { useRouter, useLocalSearchParams } from "expo-router";
 import PrimaryButton from "../../src/components/PrimaryButton";
 import { COLORS } from "../../src/styles/colors";
 import { globalStyles } from "../../src/styles/globalStyles";
-import { API_URL } from "../../src/services/api";
+
+// ✅ API
+import { getDriverRequests, fetchWithAuth } from "../../src/services/api";
 
 type Reservation = {
 id:number
-passenger_name:string
-passenger_phone:string
-departure:string
+nom:string
+prenom:string
+telephone:string
+depart:string
 destination:string
-seats_reserved:number
+places:number
 status:"pending"|"accepted"|"rejected"
 }
 
@@ -53,17 +56,8 @@ const fetchReservations = async()=>{
 
 try{
 
-const res = await fetch(
-`${API_URL}/api/driver/reservations?driverId=${driverId}`
-)
-
-const data = await res.json()
-
-if(data?.success){
-setReservations(data.reservations || [])
-}else{
-setReservations([])
-}
+const data = await getDriverRequests(driverId)
+setReservations(data || [])
 
 }catch(e){
 
@@ -77,6 +71,7 @@ setLoading(false)
 
 }
 
+// ✅ ACTIVER ACCEPT / REJECT
 const updateReservation = async(
 id:number,
 status:"accepted"|"rejected"
@@ -84,23 +79,13 @@ status:"accepted"|"rejected"
 
 try{
 
-const res = await fetch(
-`${API_URL}/api/driver/reservation-action`,
-{
+await fetchWithAuth("/api/trips/reservation_action",{
 method:"POST",
-headers:{
-"Content-Type":"application/json"
-},
 body:JSON.stringify({
-reservationId:id,
+reservation_id:id,
 status
 })
-}
-)
-
-const data = await res.json()
-
-if(data?.success){
+})
 
 Alert.alert(
 "Succès",
@@ -109,17 +94,12 @@ status==="accepted"
 :"Réservation refusée"
 )
 
+// 🔁 refresh
 fetchReservations()
-
-}else{
-
-Alert.alert("Erreur",data.message)
-
-}
 
 }catch(e){
 
-Alert.alert("Erreur","Connexion serveur impossible")
+Alert.alert("Erreur","Action impossible")
 
 }
 
@@ -133,6 +113,7 @@ Linking.openURL(`tel:${phone}`)
 
 }
 
+// ✅ STATUS DYNAMIQUE
 const renderStatus = (status:string)=>{
 
 if(status==="accepted"){
@@ -154,7 +135,7 @@ const renderItem = ({item}:{item:Reservation})=>(
 <View style={styles.row}>
 
 <Text style={styles.route}>
-{item.departure} → {item.destination}
+{item.depart} → {item.destination}
 </Text>
 
 {renderStatus(item.status)}
@@ -162,22 +143,22 @@ const renderItem = ({item}:{item:Reservation})=>(
 </View>
 
 <Text style={styles.info}>
-Passager : {item.passenger_name}
+Passager : {item.nom} {item.prenom}
 </Text>
 
 <Text style={styles.info}>
-Places : {item.seats_reserved}
+Places : {item.places}
 </Text>
 
 <Text style={styles.info}>
-📞 {item.passenger_phone}
+📞 {item.telephone}
 </Text>
 
 <View style={styles.actions}>
 
 <TouchableOpacity
 style={styles.call}
-onPress={()=>callPassenger(item.passenger_phone)}
+onPress={()=>callPassenger(item.telephone)}
 >
 <Text style={styles.actionText}>
 Appeler
@@ -240,7 +221,7 @@ Réservations reçues
 Aucune réservation pour le moment
 </Text>
 
-):(
+):( 
 
 <FlatList
 data={reservations}
@@ -354,4 +335,4 @@ rejected:{
 backgroundColor:COLORS.danger
 }
 
-})
+});

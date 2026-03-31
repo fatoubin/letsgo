@@ -1,21 +1,29 @@
 import { useEffect } from "react";
 import { View, ActivityIndicator } from "react-native";
-import { useRouter, useLocalSearchParams } from "expo-router";
+import { useRouter } from "expo-router";
+
+// ✅ IMPORT LOGOUT
+import { logout } from "../../src/services/api";
 
 export default function LogoutScreen() {
 
   const router = useRouter();
-  const params = useLocalSearchParams();
-
-  const onLogout = params?.onLogout as any;
 
   useEffect(() => {
 
-    if (onLogout) {
-      onLogout();
-    }
+    const handleLogout = async () => {
+      try {
+        // ✅ suppression token + user
+        await logout();
+      } catch (e) {
+        console.log("LOGOUT ERROR", e);
+      } finally {
+        // ✅ redirection
+        router.replace("/welcome");
+      }
+    };
 
-    router.replace("/welcome");
+    handleLogout();
 
   }, []);
 

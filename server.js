@@ -325,15 +325,29 @@ app.post("/api/trips/create", authenticateDriver, (req, res) => {
 
 // ── Demandes passagers visibles par le chauffeur ──
 app.get("/api/trips/driver_requests", authenticateDriver, (req, res) => {
+
   db.query(
-    `SELECT dm.*, u.nom, u.prenom, u.telephone
-     FROM demandes dm JOIN users u ON dm.user_id = u.id
+    `SELECT 
+      dm.id,
+      dm.depart,
+      dm.destination,
+      dm.places,
+      dm.status,
+      u.nom,
+      u.prenom,
+      u.telephone
+     FROM demandes dm
+     JOIN users u ON dm.user_id = u.id
      ORDER BY dm.created_at DESC`,
     (err, results) => {
+
       if (err) return res.status(500).json({ message: "Erreur serveur" });
+
       res.json(results);
+
     }
   );
+
 });
 
 // ── Stats chauffeur ──
@@ -380,6 +394,45 @@ app.post("/api/driver/update_location", authenticateDriver, (req, res) => {
       res.json({ message: "Position mise à jour" });
     }
   );
+});
+
+
+// ── Accepter / Refuser réservation ──
+app.post("/api/trips/reservation_action", authenticateDriver, (req, res) => {
+
+  const { reservation_id, status } = req.body;
+
+  if (!reservation_id || !status) {
+    return res.status(400).json({ message: "Champs manquants" });
+  }
+
+  if (!["accepted", "rejected"].includes(status)) {
+    return res.status(400).json({ message: "Statut invalide" });
+  }
+
+  db.query(
+    "UPDATE demandes SET status = ? WHERE id = ?",
+    [status, reservation_id],
+    (err, result) => {
+
+      if (err) {
+        return res.status(500).json({ message: "Erreur serveur" });
+      }
+
+      if (result.affectedRows === 0) {
+        return res.status(404).json({ message: "Réservation introuvable" });
+      }
+
+      res.json({
+        success: true,
+        message: status === "accepted"
+          ? "Réservation acceptée"
+          : "Réservation refusée"
+      });
+
+    }
+  );
+
 });
 
 // =======================================================
