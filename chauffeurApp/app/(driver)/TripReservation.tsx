@@ -4,7 +4,8 @@ import {
   StyleSheet,
   ActivityIndicator,
   Text,
-  Alert
+  Alert,
+  Dimensions
 } from "react-native";
 
 import MapView, { Marker, Polyline } from "react-native-maps";
@@ -16,12 +17,64 @@ import { Magnetometer } from "expo-sensors";
 import { API_URL } from "../../src/services/api";
 
 const GOOGLE_MAPS_KEY = process.env.EXPO_PUBLIC_GOOGLE_MAPS_KEY ?? "";
+const { width } = Dimensions.get("window");
+
+// ✅ Fonction de géocodage améliorée (identique à TripMap)
+const geocodeDestination = async (destinationName: string): Promise<any> => {
+  if (!destinationName) return null;
+
+  const variations = [
+    destinationName,
+    `${destinationName}, Sénégal`,
+    `${destinationName}, Dakar, Sénégal`,
+    `${destinationName}, Thiès, Sénégal`,
+    `${destinationName}, Mbour, Sénégal`,
+  ];
+
+  for (const query of variations) {
+    try {
+      const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(query)}&key=${GOOGLE_MAPS_KEY}`;
+      console.log(`🔍 Tentative geocoding (réservation): ${query}`);
+      
+      const res = await fetch(url);
+      const json = await res.json();
+
+      if (json.status === "OK" && json.results?.length > 0) {
+        const loc = json.results[0].geometry.location;
+        console.log(`✅ Trouvé pour ${query}`);
+        return { latitude: loc.lat, longitude: loc.lng };
+      }
+    } catch (e) {
+      console.log(`❌ Erreur geocoding pour ${query}:`, e);
+    }
+  }
+
+  // Fallback pour Mbour et autres villes
+  const fallbackCoords: { [key: string]: { lat: number; lng: number } } = {
+    "mbour": { lat: 14.4056, lng: -16.9647 },
+    "dakar": { lat: 14.6937, lng: -17.4441 },
+    "thies": { lat: 14.7910, lng: -16.9259 },
+    "touba": { lat: 14.8575, lng: -15.8766 },
+    "saint louis": { lat: 16.0283, lng: -16.5000 },
+    "kaolack": { lat: 14.1522, lng: -16.0727 },
+    "ziguinchor": { lat: 12.5708, lng: -16.2694 },
+    "diourbel": { lat: 14.6479, lng: -16.2438 },
+  };
+
+  const lowerName = destinationName.toLowerCase();
+  for (const [city, coords] of Object.entries(fallbackCoords)) {
+    if (lowerName.includes(city)) {
+      console.log(`📍 Utilisation fallback pour ${city}`);
+      return { latitude: coords.lat, longitude: coords.lng };
+    }
+  }
+
+  return null;
+};
 
 export default function TripReservationScreen() {
 
   const params = useLocalSearchParams();
-
-  // ── Le trip est passé en JSON depuis TripScreen ──
   const trip = params.trip ? JSON.parse(String(params.trip)) : null;
 
   const mapRef = useRef<MapView | null>(null);
@@ -32,8 +85,8 @@ export default function TripReservationScreen() {
   const [heading, setHeading] = useState(0);
   const [loading, setLoading] = useState(true);
   const [driverId, setDriverId] = useState<number | null>(null);
+  const [geocodingStatus, setGeocodingStatus] = useState<string>("Recherche de la destination...");
 
-  // ── Lire driverId ──
   useEffect(() => {
     const load = async () => {
       const stored = await SecureStore.getItemAsync("driverId");
@@ -42,7 +95,6 @@ export default function TripReservationScreen() {
     load();
   }, []);
 
-  // ── Boussole ──
   useEffect(() => {
     const sub = Magnetometer.addListener(data => {
       const angle = Math.atan2(data.y, data.x) * (180 / Math.PI);
@@ -51,7 +103,6 @@ export default function TripReservationScreen() {
     return () => sub.remove();
   }, []);
 
-  // ── GPS chauffeur ──
   useEffect(() => {
     let sub: Location.LocationSubscription;
 
@@ -76,7 +127,6 @@ export default function TripReservationScreen() {
 
           setDriverLocation(pos);
 
-          // ── Envoyer position au serveur ──
           if (driverId) {
             fetch(`${API_URL}/api/driver/update_location`, {
               method: "POST",
@@ -100,40 +150,28 @@ export default function TripReservationScreen() {
     return () => { if (sub) sub.remove(); };
   }, [heading, driverId]);
 
-  // ── Destination depuis le trip passé en params ──
-  // Au lieu d'appeler /api/trips/coords (inexistant),
-  // on géocode la destination textuelle via Google Geocoding
+  // ✅ Géocodage amélioré
   useEffect(() => {
     if (!trip?.destination) return;
 
-    const geocodeDestination = async () => {
-      try {
-        const url =
-          `https://maps.googleapis.com/maps/api/geocode/json?` +
-          `address=${encodeURIComponent(trip.destination + ", Dakar, Sénégal")}` +
-          `&key=${GOOGLE_MAPS_KEY}`;
-
-        const res = await fetch(url);
-        const json = await res.json();
-
-        if (json.results?.length) {
-          const loc = json.results[0].geometry.location;
-          setDestination({
-            latitude: loc.lat,
-            longitude: loc.lng
-          });
-        } else {
-          console.log("❌ Geocoding: aucun résultat pour", trip.destination);
-        }
-      } catch (e) {
-        console.log("❌ GEOCODING ERROR", e);
+    const processGeocoding = async () => {
+      setGeocodingStatus(`Localisation de "${trip.destination}"...`);
+      const result = await geocodeDestination(trip.destination);
+      if (result) {
+        setDestination(result);
+        setGeocodingStatus(`✅ Destination trouvée`);
+      } else {
+        setGeocodingStatus(`❌ Destination "${trip.destination}" non trouvée`);
+        Alert.alert(
+          "⚠️ Destination non trouvée",
+          `La destination "${trip.destination}" n'a pas pu être localisée. Utilisez un nom plus précis (ex: Mbour, Sénégal).`
+        );
       }
     };
 
-    geocodeDestination();
+    processGeocoding();
   }, [trip]);
 
-  // ── Calcul route Google Directions ──
   useEffect(() => {
     if (!driverLocation || !destination) return;
 
@@ -151,6 +189,8 @@ export default function TripReservationScreen() {
         if (json.routes?.length) {
           const decoded = decodePolyline(json.routes[0].overview_polyline.points);
           setRouteCoords(decoded);
+        } else {
+          console.log("❌ Aucun itinéraire trouvé");
         }
       } catch (e) {
         console.log("❌ ROUTE ERROR", e);
@@ -166,7 +206,7 @@ export default function TripReservationScreen() {
     return (
       <View style={styles.center}>
         <ActivityIndicator size="large" color="#2563EB" />
-        <Text style={{ marginTop: 10, color: "#555" }}>Chargement navigation...</Text>
+        <Text style={{ marginTop: 10, color: "#555" }}>{geocodingStatus}</Text>
         {trip?.destination && (
           <Text style={{ marginTop: 6, color: "#999", fontSize: 13 }}>
             Destination : {trip.destination}
@@ -188,19 +228,16 @@ export default function TripReservationScreen() {
           longitudeDelta: 0.05
         }}
       >
-        {/* Chauffeur */}
         <Marker coordinate={driverLocation} rotation={heading} flat>
           <Text style={{ fontSize: 28 }}>🚗</Text>
         </Marker>
 
-        {/* Destination */}
         <Marker
           coordinate={destination}
           title={trip?.destination ?? "Destination"}
           pinColor="red"
         />
 
-        {/* Itinéraire */}
         {routeCoords.length > 0 && (
           <Polyline
             coordinates={routeCoords}
@@ -213,7 +250,6 @@ export default function TripReservationScreen() {
   );
 }
 
-// ── Décoder polyline Google ──
 function decodePolyline(encoded: string) {
   const points: any[] = [];
   let index = 0, lat = 0, lng = 0;
@@ -246,6 +282,7 @@ const styles = StyleSheet.create({
   center: {
     flex: 1,
     justifyContent: "center",
-    alignItems: "center"
+    alignItems: "center",
+    paddingHorizontal: 20
   }
 });
