@@ -119,6 +119,16 @@ app.post("/api/auth/login", (req, res) => {
     });
   });
 });
+// Récupérer tous les trajets disponibles (public)
+app.get("/api/client/trajets", (req, res) => {
+  db.query("SELECT * FROM trajets ORDER BY heure DESC", (err, results) => {
+    if (err) {
+      console.error("❌ Erreur GET /api/client/trajets:", err);
+      return res.status(500).json({ message: "Erreur serveur" });
+    }
+    res.json(results);
+  });
+});
 
 app.post("/api/client/trajets", authenticate, (req, res) => {
   const { depart, destination, date_depart, heure_depart, places } = req.body;
@@ -457,9 +467,221 @@ app.post("/api/trips/update", authenticateDriver, (req, res) => {
   );
 });
 
+// ================= TRANSPORT URBAIN =================
+
+// Récupérer toutes les lignes de bus
+app.get("/api/transport/lignes", (req, res) => {
+  db.query("SELECT * FROM lignes_bus ORDER BY numero", (err, rows) => {
+    if (err) {
+      console.error(err);
+      return res.status(500).json({ message: "Erreur serveur" });
+    }
+    res.json(rows);
+  });
+});
+
+// Récupérer les arrêts d'une ligne spécifique
+app.get("/api/transport/lignes/:id/arrets", (req, res) => {
+  const ligneId = req.params.id;
+  db.query(
+    `SELECT a.*, la.ordre, la.heure_theorique
+     FROM arrets_bus a
+     JOIN ligne_arrets la ON a.id = la.arret_id
+     WHERE la.ligne_id = ?
+     ORDER BY la.ordre`,
+    [ligneId],
+    (err, rows) => {
+      if (err) {
+        console.error(err);
+        return res.status(500).json({ message: "Erreur serveur" });
+      }
+      res.json(rows);
+    }
+  );
+});
+
+// Récupérer les horaires d'une ligne
+app.get("/api/transport/lignes/:id/horaires", (req, res) => {
+  const ligneId = req.params.id;
+  db.query(
+    "SELECT * FROM horaires_bus WHERE ligne_id = ? ORDER BY heure_depart",
+    [ligneId],
+    (err, rows) => {
+      if (err) {
+        console.error(err);
+        return res.status(500).json({ message: "Erreur serveur" });
+      }
+      res.json(rows);
+    }
+  );
+});
+
+// Arrêts autour d'un point (rayon en mètres)
+app.get("/api/transport/arrets-proches", (req, res) => {
+  const { lat, lon, rayon = 500 } = req.query;
+  if (!lat || !lon) {
+    return res.status(400).json({ message: "Latitude et longitude requises" });
+  }
+  // Approximation: 1° ≈ 111 km
+  const distance = rayon / 111000;
+  const sql = `
+    SELECT *, (6371 * acos(cos(radians(?)) * cos(radians(latitude)) * cos(radians(longitude) - radians(?)) + sin(radians(?)) * sin(radians(latitude)))) AS distance_km
+    FROM arrets_bus
+    WHERE latitude BETWEEN ? - ? AND ? + ?
+      AND longitude BETWEEN ? - ? AND ? + ?
+    HAVING distance_km < ?
+    ORDER BY distance_km
+    LIMIT 10
+  `;
+  db.query(sql, [lat, lon, lat, lat, distance, lat, distance, lon, distance, lon, distance, rayon / 1000], (err, rows) => {
+    if (err) {
+      console.error(err);
+      return res.status(500).json({ message: "Erreur serveur" });
+    }
+    res.json(rows);
+  });
+});
+
+// Itinéraire (lignes reliant deux points)
+app.get("/api/transport/itineraires", async (req, res) => {
+  const { lat_depart, lon_depart, lat_arrivee, lon_arrivee } = req.query;
+  if (!lat_depart || !lon_depart || !lat_arrivee || !lon_arrivee) {
+    return res.status(400).json({ message: "Coordonnées manquantes" });
+  }
+
+  try {
+    // Fonctions utilitaires définies en interne (ou déclarées globalement)
+    const arretsDepart = await findArretsProches(lat_depart, lon_depart, 500);
+    const arretsArrivee = await findArretsProches(lat_arrivee, lon_arrivee, 500);
+
+    if (arretsDepart.length === 0 || arretsArrivee.length === 0) {
+      return res.json({ itineraires: [], message: "Aucun arrêt trouvé à proximité" });
+    }
+
+    // Récupérer les lignes pour chaque arrêt
+    const lignesParArret = {};
+    for (const arret of [...arretsDepart, ...arretsArrivee]) {
+      lignesParArret[arret.id] = await getLignesByArret(arret.id);
+    }
+
+    const itineraires = [];
+    for (const arretDep of arretsDepart) {
+      const lignesDep = lignesParArret[arretDep.id];
+      for (const arretArr of arretsArrivee) {
+        const lignesArr = lignesParArret[arretArr.id];
+        // Chercher les lignes communes
+        for (const ligneDep of lignesDep) {
+          const ligneArr = lignesArr.find(l => l.id === ligneDep.id);
+          if (ligneArr) {
+            const ordreDep = await getOrdreArret(ligneDep.id, arretDep.id);
+            const ordreArr = await getOrdreArret(ligneDep.id, arretArr.id);
+            if (ordreDep !== null && ordreArr !== null && ordreDep < ordreArr) {
+              const horaires = await getHorairesProchains(ligneDep.id);
+              itineraires.push({
+                ligne: {
+                  id: ligneDep.id,
+                  numero: ligneDep.numero,
+                  nom: ligneDep.nom,
+                },
+                depart: {
+                  nom: arretDep.nom,
+                  lat: arretDep.latitude,
+                  lon: arretDep.longitude,
+                },
+                arrivee: {
+                  nom: arretArr.nom,
+                  lat: arretArr.latitude,
+                  lon: arretArr.longitude,
+                },
+                duree_estimee: (ordreArr - ordreDep) * 3, // 3 minutes par arrêt
+                horaires: horaires,
+              });
+            }
+          }
+        }
+      }
+    }
+
+    // Supprimer les doublons (même ligne, mêmes arrêts)
+    const uniques = itineraires.filter((it, idx, self) =>
+      idx === self.findIndex(t => t.ligne.id === it.ligne.id && t.depart.nom === it.depart.nom && t.arrivee.nom === it.arrivee.nom)
+    );
+
+    res.json({ itineraires: uniques });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Erreur calcul itinéraire" });
+  }
+});
+
+// ================= FONCTIONS UTILITAIRES (transport) =================
+// Note: Ces fonctions utilisent db, donc doivent être déclarées après la connexion.
+
+function findArretsProches(lat, lon, rayon) {
+  return new Promise((resolve, reject) => {
+    const distance = rayon / 111000;
+    const sql = `
+      SELECT *, (6371 * acos(cos(radians(?)) * cos(radians(latitude)) * cos(radians(longitude) - radians(?)) + sin(radians(?)) * sin(radians(latitude)))) AS distance_km
+      FROM arrets_bus
+      WHERE latitude BETWEEN ? - ? AND ? + ?
+        AND longitude BETWEEN ? - ? AND ? + ?
+      HAVING distance_km < ?
+      ORDER BY distance_km
+      LIMIT 10
+    `;
+    db.query(sql, [lat, lon, lat, lat, distance, lat, distance, lon, distance, lon, distance, rayon / 1000], (err, rows) => {
+      if (err) reject(err);
+      else resolve(rows);
+    });
+  });
+}
+
+function getLignesByArret(arretId) {
+  return new Promise((resolve, reject) => {
+    db.query(
+      `SELECT l.*, la.ordre
+       FROM lignes_bus l
+       JOIN ligne_arrets la ON l.id = la.ligne_id
+       WHERE la.arret_id = ?`,
+      [arretId],
+      (err, rows) => {
+        if (err) reject(err);
+        else resolve(rows);
+      }
+    );
+  });
+}
+
+function getOrdreArret(ligneId, arretId) {
+  return new Promise((resolve, reject) => {
+    db.query(
+      "SELECT ordre FROM ligne_arrets WHERE ligne_id = ? AND arret_id = ?",
+      [ligneId, arretId],
+      (err, rows) => {
+        if (err) reject(err);
+        else resolve(rows.length ? rows[0].ordre : null);
+      }
+    );
+  });
+}
+
+function getHorairesProchains(ligneId) {
+  return new Promise((resolve, reject) => {
+    const now = new Date();
+    const currentTime = `${now.getHours()}:${now.getMinutes()}`;
+    db.query(
+      `SELECT heure_depart FROM horaires_bus WHERE ligne_id = ? AND heure_depart > ? ORDER BY heure_depart LIMIT 5`,
+      [ligneId, currentTime],
+      (err, rows) => {
+        if (err) reject(err);
+        else resolve(rows.map(r => r.heure_depart));
+      }
+    );
+  });
+}
+
 // ── Supprimer un trajet ──
 app.delete("/api/trips/delete/:id", authenticateDriver, (req, res) => {
-
   const tripId = req.params.id;
 
   // 1. Vérifier s'il y a des réservations liées
@@ -467,11 +689,9 @@ app.delete("/api/trips/delete/:id", authenticateDriver, (req, res) => {
     "SELECT COUNT(*) AS total FROM demandes WHERE trip_id = ? AND status != 'rejected'",
     [tripId],
     (err, result) => {
-
       if (err) {
         return res.status(500).json({ message: "Erreur serveur" });
       }
-
       if (result[0].total > 0) {
         return res.status(400).json({
           message: "Impossible de supprimer : des réservations existent"
@@ -483,24 +703,19 @@ app.delete("/api/trips/delete/:id", authenticateDriver, (req, res) => {
         "DELETE FROM trajets WHERE id = ?",
         [tripId],
         (err2, result2) => {
-
           if (err2) {
             return res.status(500).json({ message: "Erreur suppression" });
           }
-
           if (result2.affectedRows === 0) {
             return res.status(404).json({ message: "Trajet introuvable" });
           }
-
           res.json({ success: true, message: "Trajet supprimé" });
-
         }
       );
-
     }
   );
-
 });
+
 // =======================================================
 // ================= TEST ================================
 // =======================================================
@@ -510,6 +725,7 @@ app.get("/api/test", (req, res) => {
     res.json({ status: "MySQL ✅", solution: results[0].result, database: process.env.DB_NAME });
   });
 });
+
 
 // ================= SERVER =================
 const PORT = process.env.PORT || 3000;

@@ -4,8 +4,7 @@ import * as SecureStore from "expo-secure-store";
 import { Platform } from "react-native";
 
 
-export const API_URL = "https://letsgo-ks54.onrender.com";// ⚠️ À CHANGER !!!
-
+export const API_URL = "https://letsgo-ks54.onrender.com";
 console.log("🌐 API URL (ngrok):", API_URL);
 console.log("📱 Plateforme:", Platform.OS);
 
@@ -214,6 +213,27 @@ export async function getFavoris() {
   return fetchWithAuth("/api/client/favoris");
 }
 
+/// ==============================
+// 📝 GESTION DES DEMANDES (planifier.tsx)
+// ==============================
+
+export async function creerDemande(payload: {
+  depart: string;
+  destination: string;
+  date_depart: string;  // Format: YYYY-MM-DD
+  heure_depart: string;  // Format: HH:MM
+  places: number;
+}) {
+  return fetchWithAuth("/api/client/demandes", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+// Optionnel : récupérer ses demandes
+export async function getMesDemandes() {
+  return fetchWithAuth("/api/client/mes-demandes");
+}
 // ==============================
 // 🔍 TEST DE CONNEXION
 // ==============================
@@ -245,5 +265,133 @@ export async function testNgrokConnection() {
   } catch (error) {
     console.error("❌ Erreur connexion ngrok:", error);
     return { success: false, error };
+  }
+}
+export async function deleteDemande(id: number) {
+  return fetchWithAuth(`/api/client/demandes/${id}`, {
+    method: "DELETE",
+  });
+}
+export async function updateDemande(id: number, payload: {
+  depart: string;
+  destination: string;
+  date_depart: string;
+  heure_depart: string;
+  places: number;
+}) {
+  return fetchWithAuth(`/api/client/demandes/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+}
+
+
+// ==============================
+// 🌍 GÉOCODAGE (Google Maps)
+// ==============================
+
+
+
+// ==============================
+// 🌍 GÉOCODAGE (Google Maps)
+// ==============================
+
+// lib/api.ts
+
+
+const GOOGLE_API_KEY = process.env.EXPO_PUBLIC_GOOGLE_MAPS_KEY;
+// ... (gardez vos fonctions existantes : saveToken, login, register, fetchWithAuth, etc.)
+
+// ==============================
+// 🌍 GÉOCODAGE (Google Maps)
+// ==============================
+
+export async function geocodeAddress(address: string): Promise<{ lat: number; lon: number; display_name: string } | null> {
+  try {
+    const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&components=country:SN&key=${GOOGLE_API_KEY}`;
+    const response = await fetch(url);
+    const data = await response.json();
+    if (data.status === "OK" && data.results.length > 0) {
+      const { lat, lng } = data.results[0].geometry.location;
+      return { lat, lon: lng, display_name: data.results[0].formatted_address };
+    } else {
+      console.warn("Geocoding error:", data.status);
+      return null;
+    }
+  } catch (error) {
+    console.error("Erreur geocodeAddress:", error);
+    return null;
+  }
+}
+
+export async function reverseGeocode(lat: number, lon: number): Promise<string | null> {
+  try {
+    // 1. Places API (quartier, point d'intérêt)
+    const placesUrl = `https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=${lat},${lon}&radius=200&types=neighborhood|sublocality|locality|point_of_interest&key=${GOOGLE_API_KEY}`;
+    const placesRes = await fetch(placesUrl);
+    const placesData = await placesRes.json();
+    if (placesData.status === "OK" && placesData.results.length > 0) {
+      const place = placesData.results[0];
+      if (place.name) return place.name;
+    }
+    // 2. Fallback Geocoding
+    const url = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lon}&key=${GOOGLE_API_KEY}`;
+    const response = await fetch(url);
+    const data = await response.json();
+    if (data.status === "OK" && data.results.length > 0) {
+      const comps = data.results[0].address_components;
+      const neighborhood = comps.find(c => c.types.includes("neighborhood"))?.long_name;
+      const sublocality = comps.find(c => c.types.includes("sublocality"))?.long_name;
+      const locality = comps.find(c => c.types.includes("locality"))?.long_name;
+      const parts = [neighborhood, sublocality, locality].filter(Boolean);
+      if (parts.length) return parts.join(", ");
+      return locality || data.results[0].formatted_address;
+    }
+    return `${lat.toFixed(4)}, ${lon.toFixed(4)}`;
+  } catch (error) {
+    console.error("Erreur reverseGeocode:", error);
+    return null;
+  }
+}
+// ==============================
+// 🌍 AUTOCOMPLÉTION (Google Places)
+// ==============================
+
+export async function autocompleteAddress(input: string, location?: { lat: number; lon: number }): Promise<Array<{ description: string; placeId: string }>> {
+  try {
+    let url = `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodeURIComponent(input)}&components=country:SN&key=${GOOGLE_API_KEY}`;
+    if (location) {
+      url += `&location=${location.lat},${location.lon}&radius=50000`;
+    }
+    console.log("🔍 URL autocomplete:", url);
+    const response = await fetch(url);
+    const data = await response.json();
+    console.log("📦 Statut de la réponse:", data.status);
+    console.log("📦 Message d'erreur:", data.error_message);
+    console.log("📦 Nombre de prédictions:", data.predictions?.length);
+    if (data.status === "OK") {
+      return data.predictions.map(p => ({ description: p.description, placeId: p.place_id }));
+    } else {
+      console.warn("⚠️ Erreur autocomplete:", data.status);
+      return [];
+    }
+  } catch (error) {
+    console.error("❌ Erreur réseau:", error);
+    return [];
+  }
+}
+export async function getPlaceDetails(placeId: string): Promise<{ lat: number; lon: number; display_name: string } | null> {
+  try {
+    const url = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${placeId}&fields=geometry,formatted_address&key=${GOOGLE_API_KEY}`;
+    const response = await fetch(url);
+    const data = await response.json();
+    if (data.status === "OK" && data.result) {
+      const { lat, lng } = data.result.geometry.location;
+      return { lat, lon: lng, display_name: data.result.formatted_address };
+    }
+    return null;
+  } catch (error) {
+    console.error("Erreur place details:", error);
+    return null;
   }
 }
