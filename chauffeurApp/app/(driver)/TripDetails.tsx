@@ -117,7 +117,7 @@ export default function DriverTripDetailScreen() {
   style={styles.edit}
   onPress={() =>
     router.push({
-      pathname: "/driver/TripEdit",
+      pathname: "/(driver)/TripEdit",
       params: { trip: JSON.stringify(trip) }
     })
   }

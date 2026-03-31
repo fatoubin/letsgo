@@ -128,7 +128,7 @@ export async function createTrip(payload: {
   });
 }
 
-export async function updateTrip(payload: any) {
+export async function updat(payload: any) {
   return fetchWithAuth("/api/trips/update", {
     method: "POST",
     body: JSON.stringify(payload)
