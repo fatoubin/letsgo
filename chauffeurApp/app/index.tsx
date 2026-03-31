@@ -1,22 +1,14 @@
-import { View, Text, StyleSheet } from "react-native";
+import { useRouter } from "expo-router";
+import { useEffect } from "react";
 
-export default function DriverHome() {
-  return (
-     <View style={styles.container}>
-       <Text style={styles.title}>Espace Chauffeur</Text>
-      <Text>Publier un trajet et partager sa position</Text>
-    </View>
-  );
+export default function Index() {
+  const router = useRouter();
+
+  useEffect(() => {
+    setTimeout(() =>{
+    router.replace("/(auth)/welcome");
+    }, 0);
+  }, []);
+
+  return null;
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: "bold",
-  },
-});
