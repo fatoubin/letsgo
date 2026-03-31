@@ -129,6 +129,15 @@ app.get("/api/client/trajets", (req, res) => {
     res.json(results);
   });
 });
+// Détail d’un trajet (public)
+app.get("/api/client/trajets/:id", (req, res) => {
+  const trajetId = req.params.id;
+  db.query("SELECT * FROM trajets WHERE id = ?", [trajetId], (err, results) => {
+    if (err) return res.status(500).json({ message: "Erreur serveur" });
+    if (results.length === 0) return res.status(404).json({ message: "Trajet non trouvé" });
+    res.json(results[0]);
+  });
+});
 
 app.post("/api/client/trajets", authenticate, (req, res) => {
   const { depart, destination, date_depart, heure_depart, places } = req.body;
