@@ -435,6 +435,37 @@ app.post("/api/trips/reservation_action", authenticateDriver, (req, res) => {
 
 });
 
+
+// ── Modifier un trajet ──
+app.post("/api/trips/update", authenticateDriver, (req, res) => {
+
+  const { trip_id, departure, destination, heure, seats } = req.body;
+
+  if (!trip_id || !departure || !destination || !heure || !seats) {
+    return res.status(400).json({ message: "Champs manquants" });
+  }
+
+  db.query(
+    `UPDATE trajets 
+     SET depart = ?, destination = ?, heure = ?, places = ?
+     WHERE id = ?`,
+    [departure, destination, heure, seats, trip_id],
+    (err, result) => {
+
+      if (err) {
+        return res.status(500).json({ message: "Erreur serveur" });
+      }
+
+      if (result.affectedRows === 0) {
+        return res.status(404).json({ message: "Trajet introuvable" });
+      }
+
+      res.json({ success: true, message: "Trajet mis à jour" });
+
+    }
+  );
+
+});
 // =======================================================
 // ================= TEST ================================
 // =======================================================

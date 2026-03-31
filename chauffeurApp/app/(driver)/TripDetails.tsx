@@ -112,6 +112,18 @@ export default function DriverTripDetailScreen() {
 
         <Text style={styles.label}>Places disponibles</Text>
         <Text style={styles.value}>{trip.places}</Text>
+
+        <TouchableOpacity
+  style={styles.edit}
+  onPress={() =>
+    router.push({
+      pathname: "/driver/TripEdit",
+      params: { trip: JSON.stringify(trip) }
+    })
+  }
+>
+  <Text style={styles.actionText}>Modifier</Text>
+</TouchableOpacity>
       </View>
 
       <PrimaryButton
@@ -204,5 +216,11 @@ const styles = StyleSheet.create({
   callText: { color: "#fff", fontWeight: "600" },
   accept: { backgroundColor: COLORS.success, paddingVertical: 6, paddingHorizontal: 12, borderRadius: 20 },
   reject: { backgroundColor: COLORS.danger, paddingVertical: 6, paddingHorizontal: 12, borderRadius: 20 },
-  actionText: { color: "#fff", fontWeight: "600" }
+  actionText: { color: "#fff", fontWeight: "600" },
+  edit:{
+  backgroundColor:"#3B82F6",
+  paddingVertical:8,
+  paddingHorizontal:14,
+  borderRadius:10
+}
 });
