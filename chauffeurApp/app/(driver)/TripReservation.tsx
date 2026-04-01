@@ -100,95 +100,33 @@ export default function TripReservationScreen() {
     return () => { if (sub) sub.remove(); };
   }, [heading, driverId]);
 
-  // ── Destination depuis le trip passé en params (VERSION CORRIGÉE) ──
+  // ── Destination depuis le trip passé en params ──
+  // Au lieu d'appeler /api/trips/coords (inexistant),
+  // on géocode la destination textuelle via Google Geocoding
   useEffect(() => {
     if (!trip?.destination) return;
 
     const geocodeDestination = async () => {
       try {
-        const destinationName = trip.destination;
-        
-        // Liste des variations de recherche pour plus de chances de succès
-        const searchVariations = [
-          destinationName,
-          `${destinationName}, Sénégal`,
-          `${destinationName}, Dakar, Sénégal`,
-          `${destinationName}, Thiès, Sénégal`,
-          `${destinationName}, Mbour, Sénégal`,
-          `${destinationName}, Région de Thiès`,
-          `${destinationName}, Région de Dakar`,
-        ];
-        
-        let foundLocation = null;
-        
-        // Essayer chaque variation
-        for (const query of searchVariations) {
-          const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(query)}&key=${GOOGLE_MAPS_KEY}`;
-          
-          console.log(`🔍 Recherche de: ${query}`);
-          const res = await fetch(url);
-          const json = await res.json();
-          
-          if (json.status === "OK" && json.results?.length > 0) {
-            const loc = json.results[0].geometry.location;
-            const formattedAddress = json.results[0].formatted_address;
-            console.log(`✅ Trouvé: ${formattedAddress}`);
-            foundLocation = { latitude: loc.lat, longitude: loc.lng };
-            break;
-          }
-        }
-        
-        // Si toujours pas trouvé, utiliser les coordonnées de fallback
-        if (!foundLocation) {
-          console.log(`⚠️ Aucun résultat pour ${destinationName}, utilisation des coordonnées de fallback`);
-          
-          // Coordonnées approximatives pour les villes principales du Sénégal
-          const fallbackCoords: { [key: string]: { lat: number; lng: number } } = {
-            "dakar": { lat: 14.6937, lng: -17.4441 },
-            "thies": { lat: 14.7910, lng: -16.9259 },
-            "thiès": { lat: 14.7910, lng: -16.9259 },
-            "touba": { lat: 14.8575, lng: -15.8766 },
-            "mbour": { lat: 14.4056, lng: -16.9647 },
-            "saint louis": { lat: 16.0283, lng: -16.5000 },
-            "saint-louis": { lat: 16.0283, lng: -16.5000 },
-            "kaolack": { lat: 14.1522, lng: -16.0727 },
-            "ziguinchor": { lat: 12.5708, lng: -16.2694 },
-            "diourbel": { lat: 14.6479, lng: -16.2438 },
-            "louga": { lat: 15.6187, lng: -16.2287 },
-            "tambacounda": { lat: 13.7716, lng: -13.6673 },
-            "kolda": { lat: 12.8943, lng: -14.9444 },
-            "matam": { lat: 15.6585, lng: -13.2500 },
-            "kedougou": { lat: 12.5520, lng: -12.1807 },
-            "sedhiou": { lat: 12.7078, lng: -15.5569 },
-            "bignona": { lat: 12.8092, lng: -16.2264 },
-            "fatick": { lat: 14.3345, lng: -16.4161 },
-            "kaffrine": { lat: 14.1058, lng: -15.5500 },
-            "kédougou": { lat: 12.5520, lng: -12.1807 },
-          };
-          
-          const lowerName = destinationName.toLowerCase();
-          for (const [city, coords] of Object.entries(fallbackCoords)) {
-            if (lowerName.includes(city) || city.includes(lowerName)) {
-              console.log(`📍 Fallback trouvé pour ${city}: (${coords.lat}, ${coords.lng})`);
-              foundLocation = { latitude: coords.lat, longitude: coords.lng };
-              break;
-            }
-          }
-        }
-        
-        if (foundLocation) {
-          setDestination(foundLocation);
+        const url =
+          `https://maps.googleapis.com/maps/api/geocode/json?` +
+          `address=${encodeURIComponent(trip.destination + ", Dakar, Sénégal")}` +
+          `&key=${GOOGLE_MAPS_KEY}`;
+
+        const res = await fetch(url);
+        const json = await res.json();
+
+        if (json.results?.length) {
+          const loc = json.results[0].geometry.location;
+          setDestination({
+            latitude: loc.lat,
+            longitude: loc.lng
+          });
         } else {
-          console.log("❌ Geocoding: aucun résultat pour", destinationName);
-          Alert.alert(
-            "⚠️ Destination non trouvée",
-            `La destination "${destinationName}" n'a pas pu être localisée. Utilisez un nom plus précis.`
-          );
+          console.log("❌ Geocoding: aucun résultat pour", trip.destination);
         }
-        
       } catch (e) {
         console.log("❌ GEOCODING ERROR", e);
-        Alert.alert("Erreur", "Impossible de localiser la destination");
       }
     };
 
@@ -213,8 +151,6 @@ export default function TripReservationScreen() {
         if (json.routes?.length) {
           const decoded = decodePolyline(json.routes[0].overview_polyline.points);
           setRouteCoords(decoded);
-        } else {
-          console.log("❌ Aucun itinéraire trouvé");
         }
       } catch (e) {
         console.log("❌ ROUTE ERROR", e);
