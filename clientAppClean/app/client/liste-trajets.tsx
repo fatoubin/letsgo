@@ -10,6 +10,7 @@ type Trajet = {
   destination: string;
   heure: string;
   places: number;
+   prix?: number; 
   // prix n'est pas encore dans la base, donc on peut l'ignorer ou calculer fictivement
 };
 
@@ -70,11 +71,14 @@ export default function ListeTrajets() {
             </View>
 
             <View style={styles.infoRow}>
-              <Text style={styles.info}>🕒 {formatHeure(item.heure)}</Text>
-              <Text style={styles.info}>👥 {item.places} places</Text>
-              {/* Si vous avez un prix, ajoutez-le ici, sinon un placeholder */}
-              <Text style={styles.info}>💰 1 500 FCFA</Text>
-            </View>
+  <Text style={styles.info}>🕒 {formatHeure(item.heure)}</Text>
+  <Text style={styles.info}>👥 {item.places} places</Text>
+  <Text style={styles.info}>
+    💰 {item.prix !== undefined && item.prix !== null
+          ? `${item.prix.toLocaleString()} FCFA`
+          : "Prix non spécifié"}
+  </Text>
+</View>
 
             <TouchableOpacity
               style={styles.btn}

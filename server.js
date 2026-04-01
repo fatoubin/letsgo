@@ -140,17 +140,17 @@ app.get("/api/client/trajets/:id", (req, res) => {
 });
 
 app.post("/api/client/trajets", authenticate, (req, res) => {
-  const { depart, destination, date_depart, heure_depart, places } = req.body;
+  const { depart, destination, date_depart, heure_depart, places, prix } = req.body;
   if (!destination || !places || !date_depart || !heure_depart)
     return res.status(400).json({ message: "Champs manquants" });
 
   const heure = `${date_depart} ${heure_depart}`;
   db.query(
-    "INSERT INTO trajets (user_id, depart, destination, heure, places) VALUES (?, ?, ?, ?, ?)",
-    [req.user.id, depart || "Position actuelle", destination, heure, places],
+    "INSERT INTO trajets (user_id, depart, destination, heure, places, prix) VALUES (?, ?, ?, ?, ?, ?)",
+    [req.user.id, depart || "Position actuelle", destination, heure, places, prix || null],
     (err, result) => {
       if (err) return res.status(500).json({ message: "Erreur serveur" });
-      res.json({ id: result.insertId, depart: depart || "Position actuelle", destination, heure, places });
+      res.json({ id: result.insertId, depart: depart || "Position actuelle", destination, heure, places, prix });
     }
   );
 });
@@ -333,8 +333,8 @@ app.post("/api/trips/create", authenticateDriver, (req, res) => {
     return res.status(400).json({ message: "Tous les champs sont requis" });
 
   db.query(
-    "INSERT INTO trajets (user_id, depart, destination, heure, places) VALUES ((SELECT user_id FROM drivers WHERE id = ?), ?, ?, ?, ?)",
-    [driverId, departure, destination, `${date} ${time}`, seats],
+    "INSERT INTO trajets (user_id, depart, destination, heure, places, prix) VALUES ((SELECT user_id FROM drivers WHERE id = ?), ?, ?, ?, ?, ?)",
+    [driverId, departure, destination, `${date} ${time}`, seats, price || null],
     (err, result) => {
       if (err) return res.status(500).json({ message: "Erreur création trajet" });
       res.status(201).json({ message: "Trajet créé", tripId: result.insertId });
