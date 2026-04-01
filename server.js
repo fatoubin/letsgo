@@ -132,7 +132,7 @@ app.get("/api/client/trajets", (req, res) => {
 // Détail d’un trajet (public)
 app.get("/api/client/trajets/:id", (req, res) => {
   const trajetId = req.params.id;
-  db.query("SELECT * FROM trajets WHERE id = ?", [trajetId], (err, results) => {
+  db.query("SELECT id, depart, destination, heure, places, prix FROM trajets WHERE id = ?", [trajetId], (err, results) => {
     if (err) return res.status(500).json({ message: "Erreur serveur" });
     if (results.length === 0) return res.status(404).json({ message: "Trajet non trouvé" });
     res.json(results[0]);

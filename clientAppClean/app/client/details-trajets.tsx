@@ -9,6 +9,7 @@ type Trajet = {
   depart: string;
   destination: string;
   heure: string;
+  prix?: number;
   places: number;
   user_id?: number;
   created_at?: string;
@@ -60,6 +61,7 @@ export default function DetailTrajet() {
           date_depart: trajet?.heure?.split(" ")[0],
           heure_depart: trajet?.heure?.split(" ")[1],
           places: 1,
+          trip_id: trajet?.id, // 🔑 Ajout de l'ID du trajet pour lier la demande
         }),
       });
       if (response.ok) {
