@@ -1,4 +1,4 @@
-// services/api.ts
+// services/api.ts - Version CORRIGÉE
 
 import * as SecureStore from "expo-secure-store";
 import { Platform } from "react-native";
@@ -61,29 +61,54 @@ export async function logout() {
 }
 
 /* =========================
-   AUTH FETCH
+   AUTH FETCH (avec meilleure gestion d'erreur)
 ========================= */
 
 export async function fetchWithAuth(endpoint: string, options: RequestInit = {}) {
   const token = await getToken();
   if (!token) throw new Error("Non authentifié");
 
-  const response = await fetch(`${API_URL}${endpoint}`, {
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-      ...options.headers
+  try {
+    const response = await fetch(`${API_URL}${endpoint}`, {
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+        Authorization: `Bearer ${token}`,
+        ...options.headers
+      }
+    });
+
+    // Lire la réponse comme texte d'abord
+    const text = await response.text();
+    console.log(`📥 Réponse brute de ${endpoint}:`, text.substring(0, 200));
+
+    // Si la réponse est vide, retourner null
+    if (!text || text.trim() === "") {
+      console.warn(`⚠️ Réponse vide pour ${endpoint}`);
+      return null;
     }
-  });
 
-  const text = await response.text();
-  if (!response.ok) {
-    const errData = text ? JSON.parse(text) : {};
-    throw new Error(errData.message || "Erreur serveur");
+    // Essayer de parser le JSON
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch (parseError) {
+      console.error(`❌ Erreur JSON pour ${endpoint}:`, parseError);
+      console.error(`❌ Réponse reçue: ${text.substring(0, 500)}`);
+      throw new Error(`Erreur serveur: ${text.substring(0, 100)}`);
+    }
+
+    if (!response.ok) {
+      throw new Error(data?.message || `Erreur HTTP ${response.status}`);
+    }
+
+    return data;
+    
+  } catch (error: any) {
+    console.error(`❌ Erreur fetchWithAuth pour ${endpoint}:`, error);
+    throw error;
   }
-
-  return text ? JSON.parse(text) : null;
 }
 
 /* =========================
@@ -111,6 +136,7 @@ export async function createDriverTrip(payload: {
   seats: number;
   price: number;
 }) {
+  console.log("📤 createDriverTrip payload:", payload);
   return fetchWithAuth("/api/trips/create", {
     method: "POST",
     body: JSON.stringify(payload)
@@ -125,6 +151,7 @@ export async function updateTrip(payload: {
   heure: string;
   seats: number;
 }) {
+  console.log("📤 updateTrip payload:", payload);
   return fetchWithAuth("/api/trips/update", {
     method: "POST",
     body: JSON.stringify(payload)
@@ -133,10 +160,12 @@ export async function updateTrip(payload: {
 
 // ✅ CORRECTION: Supprimer un trajet
 export async function deleteTrip(tripId: number) {
+  console.log("📤 deleteTrip ID:", tripId);
   return fetchWithAuth(`/api/trips/delete/${tripId}`, {
     method: "DELETE"
   });
 }
+
 /* =========================
    📥 DEMANDES PASSAGERS
 ========================= */
@@ -145,19 +174,21 @@ export async function getDriverRequests(driverId: number) {
   return fetchWithAuth(`/api/trips/driver_requests?driver_id=${driverId}`);
 }
 
-// ── Accepter une réservation ──
+// ✅ CORRECTION: Utiliser la bonne route /api/trips/reservation_action
 export async function acceptReservation(reservationId: number) {
-  return fetchWithAuth("/api/trips/accept_reservation", {  // ✅ bonne route
+  console.log("📤 acceptReservation ID:", reservationId);
+  return fetchWithAuth("/api/trips/reservation_action", {
     method: "POST",
-    body: JSON.stringify({ reservation_id: reservationId })
+    body: JSON.stringify({ reservation_id: reservationId, status: "accepted" })
   });
 }
 
-// ── Refuser une réservation ──
+// ✅ CORRECTION: Utiliser la bonne route /api/trips/reservation_action
 export async function rejectReservation(reservationId: number) {
-  return fetchWithAuth("/api/trips/reject_reservation", {  // ✅ bonne route
+  console.log("📤 rejectReservation ID:", reservationId);
+  return fetchWithAuth("/api/trips/reservation_action", {
     method: "POST",
-    body: JSON.stringify({ reservation_id: reservationId })
+    body: JSON.stringify({ reservation_id: reservationId, status: "rejected" })
   });
 }
 
