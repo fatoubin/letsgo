@@ -18,8 +18,10 @@ import PrimaryButton from "../../src/components/PrimaryButton";
 import { 
   acceptReservation, 
   rejectReservation, 
-  deleteTrip  // ✅ AJOUT: Importer deleteTrip
-} from "../../src/services/api";import { API_URL } from "../../src/services/api";
+  deleteTrip,
+  getToken  // ✅ AJOUT: Importer getToken
+} from "../../src/services/api";
+import { API_URL } from "../../src/services/api";
 
 type Reservation = {
   id: number;
@@ -46,13 +48,26 @@ export default function DriverTripDetailScreen() {
     fetchReservations();
   }, [trip]);
 
+  // ✅ CORRECTION: Ajouter le token dans les headers
   const fetchReservations = async () => {
     try {
+      const token = await getToken();  // Récupérer le token
+      console.log("🔑 Token présent:", token ? "Oui" : "Non");
+      
+      if (!token) {
+        console.log("❌ Pas de token, impossible de récupérer les réservations");
+        setLoading(false);
+        return;
+      }
+
       const res = await fetch(`${API_URL}/api/trips/driver_requests`, {
+        method: "GET",
         headers: {
-          "Content-Type": "application/json"
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`  // ✅ AJOUT: Ajouter le token
         }
       });
+      
       const data = await res.json();
       console.log("📥 RESERVATIONS =", JSON.stringify(data));
       setReservations(Array.isArray(data) ? data : []);
@@ -83,7 +98,6 @@ export default function DriverTripDetailScreen() {
     }
   };
 
-  // ✅ CORRECTION: Fonction handleDelete complète
   const handleDelete = (tripId: number) => {
     Alert.alert(
       "Suppression",
@@ -142,24 +156,26 @@ export default function DriverTripDetailScreen() {
         <Text style={styles.label}>Places disponibles</Text>
         <Text style={styles.value}>{trip.places}</Text>
 
-        <TouchableOpacity
-          style={styles.edit}
-          onPress={() =>
-            router.push({
-              pathname: "/(driver)/TripEdit",
-              params: { trip: JSON.stringify(trip) }
-            })
-          }
-        >
-          <Text style={styles.actionText}>Modifier</Text>
-        </TouchableOpacity>
+        <View style={styles.buttonRow}>
+          <TouchableOpacity
+            style={styles.edit}
+            onPress={() =>
+              router.push({
+                pathname: "/(driver)/TripEdit",
+                params: { trip: JSON.stringify(trip) }
+              })
+            }
+          >
+            <Text style={styles.actionText}>✏️ Modifier</Text>
+          </TouchableOpacity>
 
-        <TouchableOpacity
-          style={styles.delete}
-          onPress={() => handleDelete(trip.id)}
-        >
-          <Text style={styles.actionText}>Supprimer</Text>
-        </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.delete}
+            onPress={() => handleDelete(trip.id)}
+          >
+            <Text style={styles.actionText}>🗑️ Supprimer</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       <PrimaryButton
@@ -167,7 +183,7 @@ export default function DriverTripDetailScreen() {
         style={{ marginTop: 20 }}
         onPress={() => router.push({
           pathname: "/(driver)/TripMap",
-          params: { trip: JSON.stringify(trip) }  // ← passer trip complet
+          params: { trip: JSON.stringify(trip) }
         })}
       />
 
@@ -253,16 +269,23 @@ const styles = StyleSheet.create({
   accept: { backgroundColor: COLORS.success, paddingVertical: 6, paddingHorizontal: 12, borderRadius: 20 },
   reject: { backgroundColor: COLORS.danger, paddingVertical: 6, paddingHorizontal: 12, borderRadius: 20 },
   actionText: { color: "#fff", fontWeight: "600" },
-  edit:{
-  backgroundColor:"#3B82F6",
-  paddingVertical:8,
-  paddingHorizontal:14,
-  borderRadius:10
-},
-delete:{
-  backgroundColor: COLORS.danger,
-  paddingVertical:8,
-  paddingHorizontal:14,
-  borderRadius:10
-}
+  buttonRow: {
+    flexDirection: "row",
+    gap: 12,
+    marginTop: 16
+  },
+  edit: {
+    flex: 1,
+    backgroundColor: "#3B82F6",
+    paddingVertical: 10,
+    borderRadius: 10,
+    alignItems: "center"
+  },
+  delete: {
+    flex: 1,
+    backgroundColor: COLORS.danger,
+    paddingVertical: 10,
+    borderRadius: 10,
+    alignItems: "center"
+  }
 });
