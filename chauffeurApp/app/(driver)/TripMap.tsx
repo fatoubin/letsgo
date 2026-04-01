@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from "react";
-import { View, StyleSheet, ActivityIndicator, Text, Dimensions, Alert } from "react-native";
+import { View, StyleSheet, ActivityIndicator, Text, Dimensions } from "react-native";
 import MapView, { Marker, Polyline } from "react-native-maps";
 import { useLocalSearchParams } from "expo-router";
 import * as Location from "expo-location";
@@ -16,6 +16,7 @@ export default function DriverTripMapScreen() {
 
   const params = useLocalSearchParams();
 
+  // ── Trip passé en JSON depuis TripScreen ──
   const trip = params.trip ? JSON.parse(String(params.trip)) : null;
 
   const mapRef = useRef<MapView | null>(null);
@@ -29,9 +30,8 @@ export default function DriverTripMapScreen() {
   const [heading, setHeading] = useState(0);
   const [loading, setLoading] = useState(true);
   const [lastSpoken, setLastSpoken] = useState("");
-  const [geocodingError, setGeocodingError] = useState<string | null>(null);
 
-  // Lire driverId
+  // ── Lire driverId ──
   useEffect(() => {
     const load = async () => {
       const stored = await SecureStore.getItemAsync("driverId");
@@ -40,7 +40,7 @@ export default function DriverTripMapScreen() {
     load();
   }, []);
 
-  // Boussole
+  // ── Boussole ──
   useEffect(() => {
     const sub = Magnetometer.addListener(data => {
       const angle = Math.atan2(data.y, data.x) * (180 / Math.PI);
@@ -49,16 +49,13 @@ export default function DriverTripMapScreen() {
     return () => sub.remove();
   }, []);
 
-  // GPS Chauffeur
+  // ── GPS Chauffeur ──
   useEffect(() => {
     let sub: Location.LocationSubscription;
 
     (async () => {
       const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== "granted") {
-        Alert.alert("Erreur", "Permission GPS refusée");
-        return;
-      }
+      if (status !== "granted") return;
 
       sub = await Location.watchPositionAsync(
         { accuracy: Location.Accuracy.Highest, timeInterval: 3000, distanceInterval: 5 },
@@ -66,6 +63,7 @@ export default function DriverTripMapScreen() {
           const pos = { latitude: loc.coords.latitude, longitude: loc.coords.longitude };
           setDriverLocation(pos);
 
+          // ── Envoyer position au serveur (bonne route) ──
           if (driverId) {
             try {
               await fetch(`${API_URL}/api/driver/update_location`, {
@@ -88,103 +86,100 @@ export default function DriverTripMapScreen() {
     return () => { if (sub) sub.remove(); };
   }, [heading, driverId]);
 
-  // ✅ Fonction améliorée pour géocoder la destination
-  const geocodeDestination = async (destinationName: string) => {
-    if (!destinationName) return null;
+  // ── Geocoder la destination depuis le nom du trip ──
+  // ── Geocoder la destination depuis le nom du trip (VERSION CORRIGÉE) ──
+useEffect(() => {
+  if (!trip?.destination) return;
 
-    setGeocodingError(null);
-
-    // Liste des variations possibles pour chaque destination
-    const variations = [
-      destinationName,
-      `${destinationName}, Sénégal`,
-      `${destinationName}, Dakar, Sénégal`,
-      `${destinationName}, Thiès, Sénégal`,
-      `${destinationName}, Mbour, Sénégal`,
-      `${destinationName}, Région de Thiès`,
-      `${destinationName}, Région de Dakar`,
-    ];
-
-    // Essayer différentes variations
-    for (const query of variations) {
-      try {
+  const geocodeDestination = async () => {
+    try {
+      const destinationName = trip.destination;
+      
+      // Liste des variations de recherche pour plus de chances de succès
+      const searchVariations = [
+        destinationName,
+        `${destinationName}, Sénégal`,
+        `${destinationName}, Dakar, Sénégal`,
+        `${destinationName}, Thiès, Sénégal`,
+        `${destinationName}, Mbour, Sénégal`,
+        `${destinationName}, Région de Thiès`,
+        `${destinationName}, Région de Dakar`,
+      ];
+      
+      let foundLocation = null;
+      
+      // Essayer chaque variation
+      for (const query of searchVariations) {
         const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(query)}&key=${GOOGLE_MAPS_KEY}`;
-        console.log(`🔍 Tentative geocoding: ${query}`);
         
+        console.log(`🔍 Recherche de: ${query}`);
         const res = await fetch(url);
         const json = await res.json();
-
+        
         if (json.status === "OK" && json.results?.length > 0) {
           const loc = json.results[0].geometry.location;
           const formattedAddress = json.results[0].formatted_address;
-          console.log(`✅ Trouvé: ${formattedAddress} pour ${query}`);
-          return { latitude: loc.lat, longitude: loc.lng, formattedAddress };
+          console.log(`✅ Trouvé: ${formattedAddress}`);
+          foundLocation = { latitude: loc.lat, longitude: loc.lng };
+          break;
         }
-      } catch (e) {
-        console.log(`❌ Erreur geocoding pour ${query}:`, e);
       }
-    }
-
-    // Si toujours pas trouvé, essayer avec un fallback
-    console.log(`⚠️ Aucun résultat pour ${destinationName}, tentative avec fallback...`);
-    
-    // Fallback: coordonnées approximatives pour les villes principales du Sénégal
-    const fallbackCoords: { [key: string]: { lat: number; lng: number } } = {
-      "dakar": { lat: 14.6937, lng: -17.4441 },
-      "thies": { lat: 14.7910, lng: -16.9259 },
-      "touba": { lat: 14.8575, lng: -15.8766 },
-      "mbour": { lat: 14.4056, lng: -16.9647 },
-      "saint louis": { lat: 16.0283, lng: -16.5000 },
-      "kaolack": { lat: 14.1522, lng: -16.0727 },
-      "ziguinchor": { lat: 12.5708, lng: -16.2694 },
-      "diourbel": { lat: 14.6479, lng: -16.2438 },
-      "louga": { lat: 15.6187, lng: -16.2287 },
-      "tambacounda": { lat: 13.7716, lng: -13.6673 },
-      "kolda": { lat: 12.8943, lng: -14.9444 },
-      "matam": { lat: 15.6585, lng: -13.2500 },
-      "kedougou": { lat: 12.5520, lng: -12.1807 },
-      "sedhiou": { lat: 12.7078, lng: -15.5569 },
-    };
-
-    const lowerName = destinationName.toLowerCase();
-    for (const [city, coords] of Object.entries(fallbackCoords)) {
-      if (lowerName.includes(city)) {
-        console.log(`📍 Utilisation des coordonnées de fallback pour ${city}`);
-        setGeocodingError(`Attention: Utilisation des coordonnées approximatives pour ${destinationName}`);
-        return { latitude: coords.lat, longitude: coords.lng, formattedAddress: destinationName };
+      
+      // Si toujours pas trouvé, utiliser les coordonnées de fallback
+      if (!foundLocation) {
+        console.log(`⚠️ Aucun résultat pour ${destinationName}, utilisation des coordonnées de fallback`);
+        
+        // Coordonnées approximatives pour les villes principales du Sénégal
+        const fallbackCoords: { [key: string]: { lat: number; lng: number } } = {
+          "dakar": { lat: 14.6937, lng: -17.4441 },
+          "thies": { lat: 14.7910, lng: -16.9259 },
+          "thiès": { lat: 14.7910, lng: -16.9259 },
+          "touba": { lat: 14.8575, lng: -15.8766 },
+          "mbour": { lat: 14.4056, lng: -16.9647 },
+          "saint louis": { lat: 16.0283, lng: -16.5000 },
+          "saint-louis": { lat: 16.0283, lng: -16.5000 },
+          "kaolack": { lat: 14.1522, lng: -16.0727 },
+          "ziguinchor": { lat: 12.5708, lng: -16.2694 },
+          "diourbel": { lat: 14.6479, lng: -16.2438 },
+          "louga": { lat: 15.6187, lng: -16.2287 },
+          "tambacounda": { lat: 13.7716, lng: -13.6673 },
+          "kolda": { lat: 12.8943, lng: -14.9444 },
+          "matam": { lat: 15.6585, lng: -13.2500 },
+          "kedougou": { lat: 12.5520, lng: -12.1807 },
+          "sedhiou": { lat: 12.7078, lng: -15.5569 },
+          "bignona": { lat: 12.8092, lng: -16.2264 },
+          "fatick": { lat: 14.3345, lng: -16.4161 },
+          "kaffrine": { lat: 14.1058, lng: -15.5500 },
+          "kédougou": { lat: 12.5520, lng: -12.1807 },
+        };
+        
+        const lowerName = destinationName.toLowerCase();
+        for (const [city, coords] of Object.entries(fallbackCoords)) {
+          if (lowerName.includes(city) || city.includes(lowerName)) {
+            console.log(`📍 Fallback trouvé pour ${city}: (${coords.lat}, ${coords.lng})`);
+            foundLocation = { latitude: coords.lat, longitude: coords.lng };
+            break;
+          }
+        }
       }
+      
+      if (foundLocation) {
+        setEndPoint(foundLocation);
+      } else {
+        console.log("❌ Geocoding: aucun résultat pour", destinationName);
+        // Optionnel: afficher une alerte à l'utilisateur
+        // Alert.alert("Destination non trouvée", `La destination "${destinationName}" n'a pas pu être localisée.`);
+      }
+      
+    } catch (e) {
+      console.log("❌ GEOCODING ERROR", e);
     }
-
-    setGeocodingError(`❌ Impossible de localiser "${destinationName}". Vérifiez le nom et réessayez.`);
-    return null;
   };
 
-  // Géocoder la destination
-  useEffect(() => {
-    if (!trip?.destination) return;
+  geocodeDestination();
+}, [trip]);
 
-    const processGeocoding = async () => {
-      try {
-        const result = await geocodeDestination(trip.destination);
-        if (result) {
-          setEndPoint(result);
-        } else {
-          Alert.alert(
-            "⚠️ Destination non trouvée",
-            `La destination "${trip.destination}" n'a pas pu être localisée. Vérifiez le nom ou ajoutez des coordonnées précises.`,
-            [{ text: "OK" }]
-          );
-        }
-      } catch (e) {
-        console.log("❌ GEOCODING ERROR", e);
-        Alert.alert("Erreur", "Impossible de localiser la destination");
-      }
-    };
-
-    processGeocoding();
-  }, [trip]);
-
-  // Calcul route
+  // ── Calcul route + instructions vocales ──
   const fetchRoute = async () => {
     if (!driverLocation || !endPoint) return;
 
@@ -198,10 +193,7 @@ export default function DriverTripMapScreen() {
       const res = await fetch(url);
       const json = await res.json();
 
-      if (!json.routes?.length) {
-        console.log("❌ Aucun itinéraire trouvé");
-        return;
-      }
+      if (!json.routes?.length) return;
 
       const route = json.routes[0];
       const leg = route.legs[0];
@@ -230,18 +222,24 @@ export default function DriverTripMapScreen() {
     if (driverLocation && endPoint) fetchRoute();
   }, [driverLocation, endPoint]);
 
+  // ── Recalcul si sortie de route (> 60m) ──
+  useEffect(() => {
+    if (!driverLocation || routeCoords.length === 0) return;
+
+    let minDistance = Infinity;
+    routeCoords.forEach(p => {
+      const d = distanceBetween(driverLocation, p);
+      if (d < minDistance) minDistance = d;
+    });
+
+    if (minDistance > 60) fetchRoute();
+  }, [driverLocation]);
+
   if (loading || !driverLocation || !endPoint) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator size="large" color="#2563EB" />
-        <Text style={{ marginTop: 10, color: "#555" }}>
-          {geocodingError ? "Recherche alternative..." : "Navigation en cours..."}
-        </Text>
-        {geocodingError && (
-          <Text style={{ marginTop: 10, color: "#FF6B6B", fontSize: 12, textAlign: "center", paddingHorizontal: 20 }}>
-            {geocodingError}
-          </Text>
-        )}
+        <ActivityIndicator size="large" />
+        <Text style={{ marginTop: 10 }}>Navigation en cours...</Text>
         {trip?.destination && (
           <Text style={{ marginTop: 6, color: "#999", fontSize: 13 }}>
             Vers : {trip.destination}
@@ -255,12 +253,11 @@ export default function DriverTripMapScreen() {
 
   return (
     <View style={{ flex: 1 }}>
+
+      {/* ── Bandeau instructions ── */}
       <View style={[styles.banner, isNight && styles.bannerNight]}>
         <Text style={styles.instructionText}>🧭 {instruction}</Text>
         <Text style={styles.etaText}>⏱️ {eta}</Text>
-        {endPoint?.formattedAddress && (
-          <Text style={styles.destinationText}>📍 {endPoint.formattedAddress}</Text>
-        )}
       </View>
 
       <MapView
@@ -292,22 +289,26 @@ export default function DriverTripMapScreen() {
           />
         )}
       </MapView>
+
     </View>
   );
 }
 
+// ── Distance entre 2 points GPS (mètres) ──
 function distanceBetween(a: any, b: any) {
   const R = 6371e3;
   const φ1 = a.latitude * Math.PI / 180;
   const φ2 = b.latitude * Math.PI / 180;
   const Δφ = (b.latitude - a.latitude) * Math.PI / 180;
   const Δλ = (b.longitude - a.longitude) * Math.PI / 180;
-  const x = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+  const x =
+    Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
     Math.cos(φ1) * Math.cos(φ2) *
     Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
   return R * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x));
 }
 
+// ── Décoder polyline Google ──
 function decodePolyline(encoded: string) {
   const points: any[] = [];
   let index = 0, lat = 0, lng = 0;
@@ -339,8 +340,7 @@ const styles = StyleSheet.create({
   },
   bannerNight: { backgroundColor: "#111827" },
   instructionText: { fontSize: 16, fontWeight: "700", color: "#2563EB", textAlign: "center" },
-  etaText: { fontSize: 13, color: "#9CA3AF", textAlign: "center", marginTop: 4 },
-  destinationText: { fontSize: 11, color: "#6B7280", textAlign: "center", marginTop: 6 }
+  etaText: { fontSize: 13, color: "#9CA3AF", textAlign: "center", marginTop: 4 }
 });
 
 const nightMapStyle = [
