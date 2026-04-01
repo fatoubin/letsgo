@@ -156,13 +156,13 @@ app.post("/api/client/trajets", authenticate, (req, res) => {
 });
 
 app.post("/api/client/demandes", authenticate, (req, res) => {
-  const { depart, destination, date_depart, heure_depart, places } = req.body;
+  const { depart, destination, date_depart, heure_depart, places, trip_id } = req.body;
   if (!depart || !destination || !date_depart || !heure_depart || !places)
     return res.status(400).json({ message: "Champs manquants" });
 
   db.query(
-    "INSERT INTO demandes (user_id, depart, destination, date_depart, heure_depart, places) VALUES (?, ?, ?, ?, ?, ?)",
-    [req.user.id, depart, destination, date_depart, heure_depart, places],
+    "INSERT INTO demandes (user_id, depart, destination, date_depart, heure_depart, places, trip_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
+    [req.user.id, depart, destination, date_depart, heure_depart, places, trip_id || null],
     (err, result) => {
       if (err) return res.status(500).json({ message: "Erreur serveur" });
       res.status(201).json({ message: "Demande enregistrée avec succès", id: result.insertId });
