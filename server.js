@@ -558,65 +558,77 @@ app.get("/api/transport/itineraires", async (req, res) => {
   }
 
   try {
-    // Chercher l'arrêt exact par coordonnées
-    const arretsDepart = await findArretsProches(lat_depart, lon_depart, 100);
-    const arretsArrivee = await findArretsProches(lat_arrivee, lon_arrivee, 100);
+    const arretsDepart = await findArretsProches(lat_depart, lon_depart, 300);
+    const arretsArrivee = await findArretsProches(lat_arrivee, lon_arrivee, 300);
+
+    console.log("🚏 Arrêts depart trouvés:", arretsDepart.map(a => a.nom));
+    console.log("🚏 Arrêts arrivee trouvés:", arretsArrivee.map(a => a.nom));
 
     if (arretsDepart.length === 0 || arretsArrivee.length === 0) {
       return res.json({ itineraires: [], message: "Aucun arrêt trouvé à proximité" });
     }
 
-    // Prendre uniquement l'arrêt le plus proche pour chaque point
-    const arretDep = arretsDepart[0];
-    const arretArr = arretsArrivee[0];
-
-    // Éviter départ = arrivée
-    if (arretDep.id === arretArr.id) {
-      return res.json({ itineraires: [], message: "Le départ et l'arrivée sont le même arrêt." });
-    }
-
-    const lignesDep = await getLignesByArret(arretDep.id);
-    const lignesArr = await getLignesByArret(arretArr.id);
-
     const itineraires = [];
 
-    for (const ligneDep of lignesDep) {
-      const ligneArr = lignesArr.find(l => l.id === ligneDep.id);
-      if (ligneArr) {
-        const ordreDep = await getOrdreArret(ligneDep.id, arretDep.id);
-        const ordreArr = await getOrdreArret(ligneDep.id, arretArr.id);
-        if (ordreDep !== null && ordreArr !== null && ordreDep < ordreArr) {
-          const horaires = await getHorairesProchains(ligneDep.id);
-          itineraires.push({
-            ligne: {
-              id: ligneDep.id,
-              numero: ligneDep.numero,
-              nom: ligneDep.nom,
-            },
-            depart: {
-              nom: arretDep.nom,
-              lat: arretDep.latitude,
-              lon: arretDep.longitude,
-            },
-            arrivee: {
-              nom: arretArr.nom,
-              lat: arretArr.latitude,
-              lon: arretArr.longitude,
-            },
-            duree_estimee: (ordreArr - ordreDep) * 3,
-            horaires: horaires,
-          });
+    for (const arretDep of arretsDepart) {
+      for (const arretArr of arretsArrivee) {
+        if (arretDep.id === arretArr.id) continue;
+
+        const lignesDep = await getLignesByArret(arretDep.id);
+        const lignesArr = await getLignesByArret(arretArr.id);
+
+        console.log(`🔍 ${arretDep.nom} → lignes:`, lignesDep.map(l => l.numero));
+        console.log(`🔍 ${arretArr.nom} → lignes:`, lignesArr.map(l => l.numero));
+
+        for (const ligneDep of lignesDep) {
+          const ligneArr = lignesArr.find(l => l.id === ligneDep.id);
+          if (!ligneArr) continue;
+
+          const ordreDep = await getOrdreArret(ligneDep.id, arretDep.id);
+          const ordreArr = await getOrdreArret(ligneDep.id, arretArr.id);
+
+          console.log(`📍 Ligne ${ligneDep.numero}: ordre depart=${ordreDep}, ordre arrivee=${ordreArr}`);
+
+          // Accepter les deux sens
+          if (ordreDep !== null && ordreArr !== null && ordreDep !== ordreArr) {
+            const horaires = await getHorairesProchains(ligneDep.id);
+            itineraires.push({
+              ligne: {
+                id: ligneDep.id,
+                numero: ligneDep.numero,
+                nom: ligneDep.nom,
+              },
+              depart: {
+                nom: arretDep.nom,
+                lat: arretDep.latitude,
+                lon: arretDep.longitude,
+              },
+              arrivee: {
+                nom: arretArr.nom,
+                lat: arretArr.latitude,
+                lon: arretArr.longitude,
+              },
+              duree_estimee: Math.abs(ordreArr - ordreDep) * 3,
+              horaires: horaires,
+            });
+          }
         }
       }
     }
 
-    res.json({ itineraires });
+    // Dédoublonnage
+    const uniques = itineraires.filter((it, idx, self) =>
+      idx === self.findIndex(t => t.ligne.id === it.ligne.id && t.depart.nom === it.depart.nom && t.arrivee.nom === it.arrivee.nom)
+    );
+
+    console.log("✅ Itinéraires trouvés:", uniques.length);
+    res.json({ itineraires: uniques });
+
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Erreur calcul itinéraire" });
   }
 });
-
     // Supprimer les doublons (même ligne, mêmes arrêts)
     const uniques = itineraires.filter((it, idx, self) =>
       idx === self.findIndex(t => t.ligne.id === it.ligne.id && t.depart.nom === it.depart.nom && t.arrivee.nom === it.arrivee.nom)
