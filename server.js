@@ -735,6 +735,21 @@ app.get("/api/test", (req, res) => {
   });
 });
 
+// Rechercher des arrêts par nom (autocomplétion)
+app.get("/api/transport/arrets/search", (req, res) => {
+  const { q } = req.query;
+  if (!q || q.trim().length < 2) {
+    return res.status(400).json({ message: "Requête trop courte" });
+  }
+  db.query(
+    `SELECT id, nom, latitude, longitude FROM arrets_bus WHERE nom LIKE ? ORDER BY nom LIMIT 8`,
+    [`%${q.trim()}%`],
+    (err, rows) => {
+      if (err) return res.status(500).json({ message: "Erreur serveur" });
+      res.json(rows);
+    }
+  );
+});
 
 // ================= SERVER =================
 const PORT = process.env.PORT || 3000;
