@@ -160,9 +160,9 @@ export async function updateTrip(payload: {
 
 // ✅ CORRECTION: Supprimer un trajet
 export async function deleteTrip(tripId: number) {
-  console.log("📤 deleteTrip ID:", tripId);
-  return fetchWithAuth(`/api/trips/delete/${tripId}`, {
-    method: "DELETE"
+  return fetchWithAuth("/api/trips/delete", {
+    method: "POST",
+    body: JSON.stringify({ trip_id: tripId })
   });
 }
 

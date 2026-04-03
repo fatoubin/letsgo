@@ -12,11 +12,12 @@ import { API_URL } from "../../src/services/api";
 const GOOGLE_MAPS_KEY = process.env.EXPO_PUBLIC_GOOGLE_MAPS_KEY ?? "";
 const { width } = Dimensions.get("window");
 
+// ── Throttle : envoyer position max 1 fois toutes les 10 secondes ──
+let lastLocationSent = 0;
+
 export default function DriverTripMapScreen() {
 
   const params = useLocalSearchParams();
-
-  // ── Trip passé en JSON depuis TripScreen ──
   const trip = params.trip ? JSON.parse(String(params.trip)) : null;
 
   const mapRef = useRef<MapView | null>(null);
@@ -58,17 +59,27 @@ export default function DriverTripMapScreen() {
       if (status !== "granted") return;
 
       sub = await Location.watchPositionAsync(
-        { accuracy: Location.Accuracy.Highest, timeInterval: 3000, distanceInterval: 5 },
+        {
+          accuracy: Location.Accuracy.Balanced, // ← Balanced au lieu de Highest (moins de batterie)
+          timeInterval: 5000,                   // ← 5s au lieu de 3s
+          distanceInterval: 10                  // ← 10m au lieu de 5m
+        },
         async loc => {
           const pos = { latitude: loc.coords.latitude, longitude: loc.coords.longitude };
           setDriverLocation(pos);
 
-          // ── Envoyer position au serveur (bonne route) ──
-          if (driverId) {
+          // ── Throttle : envoyer position max 1 fois toutes les 10s ──
+          const now = Date.now();
+          if (driverId && now - lastLocationSent > 10000) {
+            lastLocationSent = now;
             try {
+              const token = await SecureStore.getItemAsync("token");
               await fetch(`${API_URL}/api/driver/update_location`, {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
+                headers: {
+                  "Content-Type": "application/json",
+                  Authorization: `Bearer ${token}`
+                },
                 body: JSON.stringify({ driver_id: driverId, lat: pos.latitude, lng: pos.longitude })
               });
             } catch (e) {
@@ -86,28 +97,53 @@ export default function DriverTripMapScreen() {
     return () => { if (sub) sub.remove(); };
   }, [heading, driverId]);
 
-  // ── Geocoder la destination depuis le nom du trip ──
+  // ── Geocoder la destination avec fallback ──
   useEffect(() => {
     if (!trip?.destination) return;
 
     const geocodeDestination = async () => {
       try {
-        const url =
-          `https://maps.googleapis.com/maps/api/geocode/json?` +
-          `address=${encodeURIComponent(trip.destination + ", Dakar, Sénégal")}` +
-          `&key=${GOOGLE_MAPS_KEY}`;
+        // Essayer plusieurs formats
+        const queries = [
+          `${trip.destination}, Sénégal`,
+          `${trip.destination}, Senegal`,
+          `${trip.destination}`,
+        ];
 
-        const res = await fetch(url);
-        const json = await res.json();
+        let found = false;
 
-        if (json.results?.length) {
-          const loc = json.results[0].geometry.location;
-          setEndPoint({ latitude: loc.lat, longitude: loc.lng });
-        } else {
-          console.log("❌ Geocoding: aucun résultat pour", trip.destination);
+        for (const query of queries) {
+          const url =
+            `https://maps.googleapis.com/maps/api/geocode/json?` +
+            `address=${encodeURIComponent(query)}` +
+            `&region=sn` +
+            `&language=fr` +
+            `&key=${GOOGLE_MAPS_KEY}`;
+
+          const res = await fetch(url);
+          const json = await res.json();
+
+          console.log("🔍 Geocoding:", query, "| status:", json.status);
+
+          if (json.results?.length) {
+            const loc = json.results[0].geometry.location;
+            setEndPoint({ latitude: loc.lat, longitude: loc.lng });
+            found = true;
+            break;
+          }
         }
+
+        if (!found) {
+          console.log("❌ Aucun résultat pour:", trip.destination);
+          // Fallback : Dakar centre
+          setEndPoint({ latitude: 14.6928, longitude: -17.4467 });
+          setLoading(false);
+        }
+
       } catch (e) {
         console.log("❌ GEOCODING ERROR", e);
+        setEndPoint({ latitude: 14.6928, longitude: -17.4467 });
+        setLoading(false);
       }
     };
 
@@ -157,7 +193,7 @@ export default function DriverTripMapScreen() {
     if (driverLocation && endPoint) fetchRoute();
   }, [driverLocation, endPoint]);
 
-  // ── Recalcul si sortie de route (> 60m) ──
+  // ── Recalcul si sortie de route (> 80m) ──
   useEffect(() => {
     if (!driverLocation || routeCoords.length === 0) return;
 
@@ -167,7 +203,7 @@ export default function DriverTripMapScreen() {
       if (d < minDistance) minDistance = d;
     });
 
-    if (minDistance > 60) fetchRoute();
+    if (minDistance > 80) fetchRoute(); // 80m au lieu de 60m
   }, [driverLocation]);
 
   if (loading || !driverLocation || !endPoint) {
@@ -189,7 +225,6 @@ export default function DriverTripMapScreen() {
   return (
     <View style={{ flex: 1 }}>
 
-      {/* ── Bandeau instructions ── */}
       <View style={[styles.banner, isNight && styles.bannerNight]}>
         <Text style={styles.instructionText}>🧭 {instruction}</Text>
         <Text style={styles.etaText}>⏱️ {eta}</Text>
@@ -210,18 +245,10 @@ export default function DriverTripMapScreen() {
           <Text style={{ fontSize: 28 }}>🚗</Text>
         </Marker>
 
-        <Marker
-          coordinate={endPoint}
-          title={trip?.destination ?? "Arrivée"}
-          pinColor="red"
-        />
+        <Marker coordinate={endPoint} title={trip?.destination ?? "Arrivée"} pinColor="red" />
 
         {routeCoords.length > 0 && (
-          <Polyline
-            coordinates={routeCoords}
-            strokeWidth={6}
-            strokeColor="#2563EB"
-          />
+          <Polyline coordinates={routeCoords} strokeWidth={6} strokeColor="#2563EB" />
         )}
       </MapView>
 
@@ -229,21 +256,16 @@ export default function DriverTripMapScreen() {
   );
 }
 
-// ── Distance entre 2 points GPS (mètres) ──
 function distanceBetween(a: any, b: any) {
   const R = 6371e3;
   const φ1 = a.latitude * Math.PI / 180;
   const φ2 = b.latitude * Math.PI / 180;
   const Δφ = (b.latitude - a.latitude) * Math.PI / 180;
   const Δλ = (b.longitude - a.longitude) * Math.PI / 180;
-  const x =
-    Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
-    Math.cos(φ1) * Math.cos(φ2) *
-    Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+  const x = Math.sin(Δφ / 2) ** 2 + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) ** 2;
   return R * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x));
 }
 
-// ── Décoder polyline Google ──
 function decodePolyline(encoded: string) {
   const points: any[] = [];
   let index = 0, lat = 0, lng = 0;

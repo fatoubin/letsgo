@@ -17,23 +17,22 @@ import { API_URL } from "../../src/services/api";
 
 const GOOGLE_MAPS_KEY = process.env.EXPO_PUBLIC_GOOGLE_MAPS_KEY ?? "";
 
+let lastLocationSent = 0;
+
 export default function TripReservationScreen() {
 
   const params = useLocalSearchParams();
-
-  // ── Le trip est passé en JSON depuis TripScreen ──
   const trip = params.trip ? JSON.parse(String(params.trip)) : null;
 
   const mapRef = useRef<MapView | null>(null);
 
+  const [driverId, setDriverId] = useState<number | null>(null);
   const [driverLocation, setDriverLocation] = useState<any>(null);
   const [destination, setDestination] = useState<any>(null);
   const [routeCoords, setRouteCoords] = useState<any[]>([]);
   const [heading, setHeading] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [driverId, setDriverId] = useState<number | null>(null);
 
-  // ── Lire driverId ──
   useEffect(() => {
     const load = async () => {
       const stored = await SecureStore.getItemAsync("driverId");
@@ -42,7 +41,6 @@ export default function TripReservationScreen() {
     load();
   }, []);
 
-  // ── Boussole ──
   useEffect(() => {
     const sub = Magnetometer.addListener(data => {
       const angle = Math.atan2(data.y, data.x) * (180 / Math.PI);
@@ -51,7 +49,6 @@ export default function TripReservationScreen() {
     return () => sub.remove();
   }, []);
 
-  // ── GPS chauffeur ──
   useEffect(() => {
     let sub: Location.LocationSubscription;
 
@@ -63,35 +60,32 @@ export default function TripReservationScreen() {
       }
 
       sub = await Location.watchPositionAsync(
-        {
-          accuracy: Location.Accuracy.Highest,
-          timeInterval: 3000,
-          distanceInterval: 5
-        },
-        loc => {
-          const pos = {
-            latitude: loc.coords.latitude,
-            longitude: loc.coords.longitude
-          };
-
+        { accuracy: Location.Accuracy.Balanced, timeInterval: 5000, distanceInterval: 10 },
+        async loc => {
+          const pos = { latitude: loc.coords.latitude, longitude: loc.coords.longitude };
           setDriverLocation(pos);
 
-          // ── Envoyer position au serveur ──
-          if (driverId) {
-            fetch(`${API_URL}/api/driver/update_location`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ driver_id: driverId, lat: pos.latitude, lng: pos.longitude })
-            }).catch(() => {});
+          // ── Throttle 10s + JWT ──
+          const now = Date.now();
+          if (driverId && now - lastLocationSent > 10000) {
+            lastLocationSent = now;
+            try {
+              const token = await SecureStore.getItemAsync("token");
+              await fetch(`${API_URL}/api/driver/update_location`, {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  Authorization: `Bearer ${token}`
+                },
+                body: JSON.stringify({ driver_id: driverId, lat: pos.latitude, lng: pos.longitude })
+              });
+            } catch (e) {
+              console.log("❌ LOCATION UPDATE ERROR", e);
+            }
           }
 
           if (mapRef.current) {
-            mapRef.current.animateCamera({
-              center: pos,
-              heading,
-              zoom: 17,
-              pitch: 45
-            });
+            mapRef.current.animateCamera({ center: pos, heading, zoom: 17, pitch: 45 });
           }
         }
       );
@@ -100,40 +94,55 @@ export default function TripReservationScreen() {
     return () => { if (sub) sub.remove(); };
   }, [heading, driverId]);
 
-  // ── Destination depuis le trip passé en params ──
-  // Au lieu d'appeler /api/trips/coords (inexistant),
-  // on géocode la destination textuelle via Google Geocoding
+  // ── Geocoding avec fallback ──
   useEffect(() => {
     if (!trip?.destination) return;
 
     const geocodeDestination = async () => {
       try {
-        const url =
-          `https://maps.googleapis.com/maps/api/geocode/json?` +
-          `address=${encodeURIComponent(trip.destination + ", Dakar, Sénégal")}` +
-          `&key=${GOOGLE_MAPS_KEY}`;
+        const queries = [
+          `${trip.destination}, Sénégal`,
+          `${trip.destination}, Senegal`,
+          `${trip.destination}`,
+        ];
 
-        const res = await fetch(url);
-        const json = await res.json();
+        let found = false;
 
-        if (json.results?.length) {
-          const loc = json.results[0].geometry.location;
-          setDestination({
-            latitude: loc.lat,
-            longitude: loc.lng
-          });
-        } else {
-          console.log("❌ Geocoding: aucun résultat pour", trip.destination);
+        for (const query of queries) {
+          const url =
+            `https://maps.googleapis.com/maps/api/geocode/json?` +
+            `address=${encodeURIComponent(query)}` +
+            `&region=sn&language=fr` +
+            `&key=${GOOGLE_MAPS_KEY}`;
+
+          const res = await fetch(url);
+          const json = await res.json();
+
+          console.log("🔍 Geocoding:", query, "| status:", json.status);
+
+          if (json.results?.length) {
+            const loc = json.results[0].geometry.location;
+            setDestination({ latitude: loc.lat, longitude: loc.lng });
+            found = true;
+            break;
+          }
         }
+
+        if (!found) {
+          setDestination({ latitude: 14.6928, longitude: -17.4467 });
+          setLoading(false);
+        }
+
       } catch (e) {
         console.log("❌ GEOCODING ERROR", e);
+        setDestination({ latitude: 14.6928, longitude: -17.4467 });
+        setLoading(false);
       }
     };
 
     geocodeDestination();
   }, [trip]);
 
-  // ── Calcul route Google Directions ──
   useEffect(() => {
     if (!driverLocation || !destination) return;
 
@@ -149,8 +158,7 @@ export default function TripReservationScreen() {
         const json = await res.json();
 
         if (json.routes?.length) {
-          const decoded = decodePolyline(json.routes[0].overview_polyline.points);
-          setRouteCoords(decoded);
+          setRouteCoords(decodePolyline(json.routes[0].overview_polyline.points));
         }
       } catch (e) {
         console.log("❌ ROUTE ERROR", e);
@@ -188,64 +196,36 @@ export default function TripReservationScreen() {
           longitudeDelta: 0.05
         }}
       >
-        {/* Chauffeur */}
         <Marker coordinate={driverLocation} rotation={heading} flat>
           <Text style={{ fontSize: 28 }}>🚗</Text>
         </Marker>
 
-        {/* Destination */}
-        <Marker
-          coordinate={destination}
-          title={trip?.destination ?? "Destination"}
-          pinColor="red"
-        />
+        <Marker coordinate={destination} title={trip?.destination ?? "Destination"} pinColor="red" />
 
-        {/* Itinéraire */}
         {routeCoords.length > 0 && (
-          <Polyline
-            coordinates={routeCoords}
-            strokeWidth={6}
-            strokeColor="#2563EB"
-          />
+          <Polyline coordinates={routeCoords} strokeWidth={6} strokeColor="#2563EB" />
         )}
       </MapView>
     </View>
   );
 }
 
-// ── Décoder polyline Google ──
 function decodePolyline(encoded: string) {
   const points: any[] = [];
   let index = 0, lat = 0, lng = 0;
-
   while (index < encoded.length) {
     let b, shift = 0, result = 0;
-    do {
-      b = encoded.charCodeAt(index++) - 63;
-      result |= (b & 0x1f) << shift;
-      shift += 5;
-    } while (b >= 0x20);
+    do { b = encoded.charCodeAt(index++) - 63; result |= (b & 0x1f) << shift; shift += 5; } while (b >= 0x20);
     lat += result & 1 ? ~(result >> 1) : result >> 1;
-
     shift = 0; result = 0;
-    do {
-      b = encoded.charCodeAt(index++) - 63;
-      result |= (b & 0x1f) << shift;
-      shift += 5;
-    } while (b >= 0x20);
+    do { b = encoded.charCodeAt(index++) - 63; result |= (b & 0x1f) << shift; shift += 5; } while (b >= 0x20);
     lng += result & 1 ? ~(result >> 1) : result >> 1;
-
     points.push({ latitude: lat / 1e5, longitude: lng / 1e5 });
   }
-
   return points;
 }
 
 const styles = StyleSheet.create({
   map: { flex: 1 },
-  center: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center"
-  }
+  center: { flex: 1, justifyContent: "center", alignItems: "center" }
 });
