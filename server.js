@@ -132,7 +132,7 @@ app.get("/api/client/trajets", (req, res) => {
 // Détail d’un trajet (public)
 app.get("/api/client/trajets/:id", (req, res) => {
   const trajetId = req.params.id;
-  db.query("SELECT * FROM trajets WHERE id = ?", [trajetId], (err, results) => {
+  db.query("SELECT id, depart, destination, heure, places, prix FROM trajets WHERE id = ?", [trajetId], (err, results) => {
     if (err) return res.status(500).json({ message: "Erreur serveur" });
     if (results.length === 0) return res.status(404).json({ message: "Trajet non trouvé" });
     res.json(results[0]);
@@ -140,17 +140,17 @@ app.get("/api/client/trajets/:id", (req, res) => {
 });
 
 app.post("/api/client/trajets", authenticate, (req, res) => {
-  const { depart, destination, date_depart, heure_depart, places } = req.body;
+  const { depart, destination, date_depart, heure_depart, places, prix } = req.body;
   if (!destination || !places || !date_depart || !heure_depart)
     return res.status(400).json({ message: "Champs manquants" });
 
   const heure = `${date_depart} ${heure_depart}`;
   db.query(
-    "INSERT INTO trajets (user_id, depart, destination, heure, places) VALUES (?, ?, ?, ?, ?)",
-    [req.user.id, depart || "Position actuelle", destination, heure, places],
+    "INSERT INTO trajets (user_id, depart, destination, heure, places, prix) VALUES (?, ?, ?, ?, ?, ?)",
+    [req.user.id, depart || "Position actuelle", destination, heure, places, prix || null],
     (err, result) => {
       if (err) return res.status(500).json({ message: "Erreur serveur" });
-      res.json({ id: result.insertId, depart: depart || "Position actuelle", destination, heure, places });
+      res.json({ id: result.insertId, depart: depart || "Position actuelle", destination, heure, places, prix });
     }
   );
 });
@@ -333,8 +333,8 @@ app.post("/api/trips/create", authenticateDriver, (req, res) => {
     return res.status(400).json({ message: "Tous les champs sont requis" });
 
   db.query(
-    "INSERT INTO trajets (user_id, depart, destination, heure, places) VALUES ((SELECT user_id FROM drivers WHERE id = ?), ?, ?, ?, ?)",
-    [driverId, departure, destination, `${date} ${time}`, seats],
+    "INSERT INTO trajets (user_id, depart, destination, heure, places, prix) VALUES ((SELECT user_id FROM drivers WHERE id = ?), ?, ?, ?, ?, ?)",
+    [driverId, departure, destination, `${date} ${time}`, seats, price || null],
     (err, result) => {
       if (err) return res.status(500).json({ message: "Erreur création trajet" });
       res.status(201).json({ message: "Trajet créé", tripId: result.insertId });
@@ -551,7 +551,6 @@ app.get("/api/transport/arrets-proches", (req, res) => {
   });
 });
 
-// Itinéraire (lignes reliant deux points)
 app.get("/api/transport/itineraires", async (req, res) => {
   const { lat_depart, lon_depart, lat_arrivee, lon_arrivee } = req.query;
   if (!lat_depart || !lon_depart || !lat_arrivee || !lon_arrivee) {
@@ -559,58 +558,77 @@ app.get("/api/transport/itineraires", async (req, res) => {
   }
 
   try {
-    // Fonctions utilitaires définies en interne (ou déclarées globalement)
-    const arretsDepart = await findArretsProches(lat_depart, lon_depart, 500);
-    const arretsArrivee = await findArretsProches(lat_arrivee, lon_arrivee, 500);
+    const arretsDepart = await findArretsProches(lat_depart, lon_depart, 300);
+    const arretsArrivee = await findArretsProches(lat_arrivee, lon_arrivee, 300);
+
+    console.log("🚏 Arrêts depart trouvés:", arretsDepart.map(a => a.nom));
+    console.log("🚏 Arrêts arrivee trouvés:", arretsArrivee.map(a => a.nom));
 
     if (arretsDepart.length === 0 || arretsArrivee.length === 0) {
       return res.json({ itineraires: [], message: "Aucun arrêt trouvé à proximité" });
     }
 
-    // Récupérer les lignes pour chaque arrêt
-    const lignesParArret = {};
-    for (const arret of [...arretsDepart, ...arretsArrivee]) {
-      lignesParArret[arret.id] = await getLignesByArret(arret.id);
-    }
-
     const itineraires = [];
+
     for (const arretDep of arretsDepart) {
-      const lignesDep = lignesParArret[arretDep.id];
       for (const arretArr of arretsArrivee) {
-        const lignesArr = lignesParArret[arretArr.id];
-        // Chercher les lignes communes
+        if (arretDep.id === arretArr.id) continue;
+
+        const lignesDep = await getLignesByArret(arretDep.id);
+        const lignesArr = await getLignesByArret(arretArr.id);
+
+        console.log(`🔍 ${arretDep.nom} → lignes:`, lignesDep.map(l => l.numero));
+        console.log(`🔍 ${arretArr.nom} → lignes:`, lignesArr.map(l => l.numero));
+
         for (const ligneDep of lignesDep) {
           const ligneArr = lignesArr.find(l => l.id === ligneDep.id);
-          if (ligneArr) {
-            const ordreDep = await getOrdreArret(ligneDep.id, arretDep.id);
-            const ordreArr = await getOrdreArret(ligneDep.id, arretArr.id);
-            if (ordreDep !== null && ordreArr !== null && ordreDep < ordreArr) {
-              const horaires = await getHorairesProchains(ligneDep.id);
-              itineraires.push({
-                ligne: {
-                  id: ligneDep.id,
-                  numero: ligneDep.numero,
-                  nom: ligneDep.nom,
-                },
-                depart: {
-                  nom: arretDep.nom,
-                  lat: arretDep.latitude,
-                  lon: arretDep.longitude,
-                },
-                arrivee: {
-                  nom: arretArr.nom,
-                  lat: arretArr.latitude,
-                  lon: arretArr.longitude,
-                },
-                duree_estimee: (ordreArr - ordreDep) * 3, // 3 minutes par arrêt
-                horaires: horaires,
-              });
-            }
+          if (!ligneArr) continue;
+
+          const ordreDep = await getOrdreArret(ligneDep.id, arretDep.id);
+          const ordreArr = await getOrdreArret(ligneDep.id, arretArr.id);
+
+          console.log(`📍 Ligne ${ligneDep.numero}: ordre depart=${ordreDep}, ordre arrivee=${ordreArr}`);
+
+          // Accepter les deux sens
+          if (ordreDep !== null && ordreArr !== null && ordreDep !== ordreArr) {
+            const horaires = await getHorairesProchains(ligneDep.id);
+            itineraires.push({
+              ligne: {
+                id: ligneDep.id,
+                numero: ligneDep.numero,
+                nom: ligneDep.nom,
+              },
+              depart: {
+                nom: arretDep.nom,
+                lat: arretDep.latitude,
+                lon: arretDep.longitude,
+              },
+              arrivee: {
+                nom: arretArr.nom,
+                lat: arretArr.latitude,
+                lon: arretArr.longitude,
+              },
+              duree_estimee: Math.abs(ordreArr - ordreDep) * 3,
+              horaires: horaires,
+            });
           }
         }
       }
     }
 
+    // Dédoublonnage
+    const uniques = itineraires.filter((it, idx, self) =>
+      idx === self.findIndex(t => t.ligne.id === it.ligne.id && t.depart.nom === it.depart.nom && t.arrivee.nom === it.arrivee.nom)
+    );
+
+    console.log("✅ Itinéraires trouvés:", uniques.length);
+    res.json({ itineraires: uniques });
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Erreur calcul itinéraire" });
+  }
+});
     // Supprimer les doublons (même ligne, mêmes arrêts)
     const uniques = itineraires.filter((it, idx, self) =>
       idx === self.findIndex(t => t.ligne.id === it.ligne.id && t.depart.nom === it.depart.nom && t.arrivee.nom === it.arrivee.nom)
@@ -735,6 +753,21 @@ app.get("/api/test", (req, res) => {
   });
 });
 
+// Rechercher des arrêts par nom (autocomplétion)
+app.get("/api/transport/arrets/search", (req, res) => {
+  const { q } = req.query;
+  if (!q || q.trim().length < 2) {
+    return res.status(400).json({ message: "Requête trop courte" });
+  }
+  db.query(
+    `SELECT id, nom, latitude, longitude FROM arrets_bus WHERE nom LIKE ? ORDER BY nom LIMIT 8`,
+    [`%${q.trim()}%`],
+    (err, rows) => {
+      if (err) return res.status(500).json({ message: "Erreur serveur" });
+      res.json(rows);
+    }
+  );
+});
 
 // ================= SERVER =================
 const PORT = process.env.PORT || 3000;

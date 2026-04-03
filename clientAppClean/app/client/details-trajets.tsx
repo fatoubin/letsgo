@@ -9,6 +9,7 @@ type Trajet = {
   depart: string;
   destination: string;
   heure: string;
+  prix?: number;
   places: number;
   user_id?: number;
   created_at?: string;
@@ -26,55 +27,65 @@ export default function DetailTrajet() {
   }, [id]);
 
   const fetchTrajet = async () => {
-    try {
-      const response = await fetch(`${API_URL}/api/client/trajets/${id}`);
-      if (!response.ok) throw new Error();
-      const data = await response.json();
-      setTrajet(data);
-    } catch (error) {
-      Alert.alert("Erreur", "Impossible de charger le trajet");
-    } finally {
-      setLoading(false);
-    }
-  };
+  try {
+    const response = await fetch(`${API_URL}/api/client/trajets/${id}`);
+    if (!response.ok) throw new Error();
+    const data = await response.json();
+    console.log("🔍 Données du trajet :", data); // <-- Ajoutez cette ligne
+    setTrajet(data);
+  } catch (error) {
+    Alert.alert("Erreur", "Impossible de charger le trajet");
+  } finally {
+    setLoading(false);
+  }
+};
 
-  const handleReserver = async () => {
-    const token = await getToken();
-    if (!token) {
-      Alert.alert("Connexion requise", "Veuillez vous connecter pour réserver");
-      router.push("/auth/login");
-      return;
-    }
+ const handleReserver = async () => {
+  const token = await getToken();
+  console.log("🔑 Token utilisateur :", token ? "présent" : "absent");
+  if (!token) {
+  Alert.alert("Connexion requise", "Veuillez vous connecter pour réserver");
+  router.push("/auth/login");
+  return;
+}
+  const [datePart, timePart] = (trajet?.heure || "").split("T");
+const date_depart = datePart;
+const heure_depart = timePart?.substring(0, 5); // "08:00"
 
-    setReserving(true);
-    try {
-      const response = await fetch(`${API_URL}/api/client/demandes`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          depart: trajet?.depart,
-          destination: trajet?.destination,
-          date_depart: trajet?.heure?.split(" ")[0],
-          heure_depart: trajet?.heure?.split(" ")[1],
-          places: 1,
-        }),
-      });
-      if (response.ok) {
-        Alert.alert("Succès", "Demande de réservation envoyée !", [
-          { text: "OK", onPress: () => router.back() },
-        ]);
-      } else {
-        Alert.alert("Erreur", "Impossible de réserver");
-      }
-    } catch (error) {
-      Alert.alert("Erreur", "Erreur réseau");
-    } finally {
-      setReserving(false);
+const payload = {
+  depart: trajet?.depart,
+  destination: trajet?.destination,
+  date_depart: date_depart,
+  heure_depart: heure_depart,
+  places: 1,
+  trip_id: trajet?.id,
+};
+  setReserving(true);
+  try {
+    const response = await fetch(`${API_URL}/api/client/demandes`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(payload),
+    });
+    const responseText = await response.text();
+    console.log("📡 Réponse serveur :", responseText);
+    if (response.ok) {
+      Alert.alert("Succès", "Demande de réservation envoyée !", [
+        { text: "OK", onPress: () => router.back() },
+      ]);
+    } else {
+      Alert.alert("Erreur", "Impossible de réserver : " + responseText);
     }
-  };
+  } catch (error) {
+    console.error("Erreur réseau :", error);
+    Alert.alert("Erreur", "Erreur réseau");
+  } finally {
+    setReserving(false);
+  }
+};
 
   if (loading) {
     return (
@@ -125,6 +136,13 @@ export default function DetailTrajet() {
           <Ionicons name="people-outline" size={20} color="#9AA4BF" />
           <Text style={styles.infoText}>{trajet.places} places disponibles</Text>
         </View>
+
+        <View style={styles.infoRow}>
+  <Ionicons name="cash-outline" size={20} color="#9AA4BF" />
+  <Text style={styles.infoText}>
+    {trajet.prix ? `${trajet.prix.toLocaleString()} FCFA` : "Prix non spécifié"}
+  </Text>
+</View>
 
         <TouchableOpacity
           style={[styles.reserveBtn, reserving && styles.disabled]}
