@@ -918,7 +918,6 @@ app.get("/api/transport/itineraires", async (req, res) => {
   }
 
   try {
-    // Augmentation du rayon à 2000 m pour plus de chances de trouver des arrêts
     const arretsDepart = await findArretsProches(lat_depart, lon_depart, 2000);
     const arretsArrivee = await findArretsProches(lat_arrivee, lon_arrivee, 2000);
 
@@ -926,8 +925,7 @@ app.get("/api/transport/itineraires", async (req, res) => {
       return res.json({ itineraires: [], message: "Aucun arrêt trouvé à proximité" });
     }
 
-    const itineraires = [];
-    const processed = new Set();
+    const meilleursItineraires = new Map();
 
     for (const arretDep of arretsDepart) {
       for (const arretArr of arretsArrivee) {
@@ -942,48 +940,47 @@ app.get("/api/transport/itineraires", async (req, res) => {
 
           const ordreDep = await getOrdreForPoint(arretDep.latitude, arretDep.longitude, ligneDep.id);
           const ordreArr = await getOrdreForPoint(arretArr.latitude, arretArr.longitude, ligneDep.id);
+          if (ordreDep === null || ordreArr === null || ordreDep === ordreArr) continue;
 
-          if (ordreDep !== null && ordreArr !== null && ordreDep !== ordreArr) {
-            const key = `${ligneDep.id}_${arretDep.id}_${arretArr.id}`;
-            if (processed.has(key)) continue;
-            processed.add(key);
+          const distDepart = distanceBetween(lat_depart, lon_depart, arretDep.latitude, arretDep.longitude);
+          const distArrivee = distanceBetween(lat_arrivee, lon_arrivee, arretArr.latitude, arretArr.longitude);
+          const sommeDistances = distDepart + distArrivee;
 
-            const horaires = await getHorairesProchains(ligneDep.id);
-            itineraires.push({
-              ligne: {
-                id: ligneDep.id,
-                numero: ligneDep.numero,
-                nom: ligneDep.nom,
-              },
-              depart: {
-                nom: arretDep.nom,
-                lat: arretDep.latitude,
-                lon: arretDep.longitude,
-              },
-              arrivee: {
-                nom: arretArr.nom,
-                lat: arretArr.latitude,
-                lon: arretArr.longitude,
-              },
-              duree_estimee: Math.abs(ordreArr - ordreDep) * 3,
-              horaires: horaires,
-            });
+          const itineraire = {
+            ligne: {
+              id: ligneDep.id,
+              numero: ligneDep.numero,
+              nom: ligneDep.nom,
+            },
+            depart: {
+              nom: arretDep.nom,
+              lat: arretDep.latitude,
+              lon: arretDep.longitude,
+            },
+            arrivee: {
+              nom: arretArr.nom,
+              lat: arretArr.latitude,
+              lon: arretArr.longitude,
+            },
+            duree_estimee: Math.abs(ordreArr - ordreDep) * 3,
+            horaires: await getHorairesProchains(ligneDep.id),
+          };
+
+          const key = ligneDep.id;
+          if (!meilleursItineraires.has(key) || sommeDistances < meilleursItineraires.get(key).sommeDistances) {
+            meilleursItineraires.set(key, { itineraire, sommeDistances });
           }
         }
       }
     }
 
-    const uniques = itineraires.filter((it, idx, self) =>
-      idx === self.findIndex(t => t.ligne.id === it.ligne.id && t.depart.nom === it.depart.nom && t.arrivee.nom === it.arrivee.nom)
-    );
-
-    res.json({ itineraires: uniques });
+    const itineraires = Array.from(meilleursItineraires.values()).map(item => item.itineraire);
+    res.json({ itineraires });
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Erreur calcul itinéraire" });
   }
 });
-
 // ================= FONCTIONS UTILITAIRES DE BASE =================
 function findArretsProches(lat, lon, rayon) {
   return new Promise((resolve, reject) => {
