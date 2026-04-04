@@ -910,7 +910,7 @@ async function getOrdreForPoint(lat, lon, ligneId) {
   return await getInterpolatedOrder(lat, lon, ligneId);
 }
 
-// ================= ITINÉRAIRE PRINCIPAL =================
+// ================= ITINÉRAIRE PRINCIPAL (AVEC INTERPOLATION) =================
 app.get("/api/transport/itineraires", async (req, res) => {
   const { lat_depart, lon_depart, lat_arrivee, lon_arrivee } = req.query;
   if (!lat_depart || !lon_depart || !lat_arrivee || !lon_arrivee) {
@@ -918,8 +918,9 @@ app.get("/api/transport/itineraires", async (req, res) => {
   }
 
   try {
-    const arretsDepart = await findArretsProches(lat_depart, lon_depart, 500);
-    const arretsArrivee = await findArretsProches(lat_arrivee, lon_arrivee, 500);
+    // Augmentation du rayon à 2000 m pour plus de chances de trouver des arrêts
+    const arretsDepart = await findArretsProches(lat_depart, lon_depart, 2000);
+    const arretsArrivee = await findArretsProches(lat_arrivee, lon_arrivee, 2000);
 
     if (arretsDepart.length === 0 || arretsArrivee.length === 0) {
       return res.json({ itineraires: [], message: "Aucun arrêt trouvé à proximité" });
@@ -970,48 +971,6 @@ app.get("/api/transport/itineraires", async (req, res) => {
           }
         }
       }
-    };
-
-    app.get("/api/transport/itineraires", async (req, res) => {
-  const { lat_depart, lon_depart, lat_arrivee, lon_arrivee } = req.query;
-  if (!lat_depart || !lon_depart || !lat_arrivee || !lon_arrivee)
-    return res.status(400).json({ message: "Coordonnées manquantes" });
-
-  try {
-    const arretsDepart = await findArretsProches(lat_depart, lon_depart, 300);
-    const arretsArrivee = await findArretsProches(lat_arrivee, lon_arrivee, 300);
-
-    if (arretsDepart.length === 0 || arretsArrivee.length === 0)
-      return res.json({ itineraires: [], message: "Aucun arrêt trouvé à proximité" });
-
-    const itineraires = [];
-
-    for (const arretDep of arretsDepart) {
-      for (const arretArr of arretsArrivee) {
-        if (arretDep.id === arretArr.id) continue;
-
-        const lignesDep = await getLignesByArret(arretDep.id);
-        const lignesArr = await getLignesByArret(arretArr.id);
-
-        for (const ligneDep of lignesDep) {
-          const ligneArr = lignesArr.find(l => l.id === ligneDep.id);
-          if (!ligneArr) continue;
-
-          const ordreDep = await getOrdreArret(ligneDep.id, arretDep.id);
-          const ordreArr = await getOrdreArret(ligneDep.id, arretArr.id);
-
-          if (ordreDep !== null && ordreArr !== null && ordreDep !== ordreArr) {
-            const horaires = await getHorairesProchains(ligneDep.id);
-            itineraires.push({
-              ligne: { id: ligneDep.id, numero: ligneDep.numero, nom: ligneDep.nom },
-              depart: { nom: arretDep.nom, lat: arretDep.latitude, lon: arretDep.longitude },
-              arrivee: { nom: arretArr.nom, lat: arretArr.latitude, lon: arretArr.longitude },
-              duree_estimee: Math.abs(ordreArr - ordreDep) * 3,
-              horaires
-            });
-          }
-        }
-      }
     }
 
     const uniques = itineraires.filter((it, idx, self) =>
@@ -1019,16 +978,13 @@ app.get("/api/transport/itineraires", async (req, res) => {
     );
 
     res.json({ itineraires: uniques });
-
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Erreur calcul itinéraire" });
   }
 });
 
-// ================= FONCTIONS UTILITAIRES DE BASE (à garder une seule fois) =================
-// Ces fonctions sont utilisées aussi bien par le transport urbain que par d'autres parties.
-// Assurez-vous qu'elles ne sont pas définies ailleurs dans le fichier.
+// ================= FONCTIONS UTILITAIRES DE BASE =================
 function findArretsProches(lat, lon, rayon) {
   return new Promise((resolve, reject) => {
     const distance = rayon / 111000;
@@ -1091,7 +1047,6 @@ function getHorairesProchains(ligneId) {
     );
   });
 }
-
 // ================= SERVER =================
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, "0.0.0.0", () => {
