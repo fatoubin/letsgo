@@ -520,6 +520,27 @@ app.get("/api/trips/driver_requests", authenticateDriver, (req, res) => {
   );
 
 });
+// ── Récupérer les réservations (alias pour driver_requests)
+app.get("/api/trips/reservations", authenticateDriver, (req, res) => {
+  db.query(
+    `SELECT 
+      dm.id,
+      dm.depart,
+      dm.destination,
+      dm.places,
+      dm.status,
+      u.nom,
+      u.prenom,
+      u.telephone
+     FROM demandes dm
+     JOIN users u ON dm.user_id = u.id
+     ORDER BY dm.created_at DESC`,
+    (err, results) => {
+      if (err) return res.status(500).json({ message: "Erreur serveur" });
+      res.json(results);
+    }
+  );
+});
 
 // ── Stats chauffeur ──
 app.get("/api/driver/stats", authenticateDriver, (req, res) => {
@@ -729,15 +750,12 @@ app.delete("/api/trips/delete/:id", authenticateDriver, (req, res) => {
 // Récupérer toutes les lignes de bus
 app.get("/api/transport/lignes", (req, res) => {
   db.query("SELECT * FROM lignes_bus ORDER BY numero", (err, rows) => {
-    if (err) {
-      console.error(err);
-      return res.status(500).json({ message: "Erreur serveur" });
-    }
+    if (err) return res.status(500).json({ message: "Erreur serveur" });
     res.json(rows);
   });
 });
 
-// Récupérer les arrêts d'une ligne spécifique
+// Récupérer les arrêts d'une ligne
 app.get("/api/transport/lignes/:id/arrets", (req, res) => {
   const ligneId = req.params.id;
   db.query(
@@ -748,10 +766,7 @@ app.get("/api/transport/lignes/:id/arrets", (req, res) => {
      ORDER BY la.ordre`,
     [ligneId],
     (err, rows) => {
-      if (err) {
-        console.error(err);
-        return res.status(500).json({ message: "Erreur serveur" });
-      }
+      if (err) return res.status(500).json({ message: "Erreur serveur" });
       res.json(rows);
     }
   );
@@ -764,22 +779,30 @@ app.get("/api/transport/lignes/:id/horaires", (req, res) => {
     "SELECT * FROM horaires_bus WHERE ligne_id = ? ORDER BY heure_depart",
     [ligneId],
     (err, rows) => {
-      if (err) {
-        console.error(err);
-        return res.status(500).json({ message: "Erreur serveur" });
-      }
+      if (err) return res.status(500).json({ message: "Erreur serveur" });
       res.json(rows);
     }
   );
 });
 
-// Arrêts autour d'un point (rayon en mètres)
+// Recherche d'arrêts par nom
+app.get("/api/transport/arrets/search", (req, res) => {
+  const { q } = req.query;
+  if (!q || q.trim().length < 2) return res.status(400).json({ message: "Requête trop courte" });
+  db.query(
+    "SELECT id, nom, latitude, longitude FROM arrets_bus WHERE nom LIKE ? ORDER BY nom LIMIT 8",
+    [`%${q.trim()}%`],
+    (err, rows) => {
+      if (err) return res.status(500).json({ message: "Erreur serveur" });
+      res.json(rows);
+    }
+  );
+});
+
+// Arrêts proches d'un point (rayon en mètres)
 app.get("/api/transport/arrets-proches", (req, res) => {
   const { lat, lon, rayon = 500 } = req.query;
-  if (!lat || !lon) {
-    return res.status(400).json({ message: "Latitude et longitude requises" });
-  }
-  // Approximation: 1° ≈ 111 km
+  if (!lat || !lon) return res.status(400).json({ message: "Latitude et longitude requises" });
   const distance = rayon / 111000;
   const sql = `
     SELECT *, (6371 * acos(cos(radians(?)) * cos(radians(latitude)) * cos(radians(longitude) - radians(?)) + sin(radians(?)) * sin(radians(latitude)))) AS distance_km
@@ -791,14 +814,103 @@ app.get("/api/transport/arrets-proches", (req, res) => {
     LIMIT 10
   `;
   db.query(sql, [lat, lon, lat, lat, distance, lat, distance, lon, distance, lon, distance, rayon / 1000], (err, rows) => {
-    if (err) {
-      console.error(err);
-      return res.status(500).json({ message: "Erreur serveur" });
-    }
+    if (err) return res.status(500).json({ message: "Erreur serveur" });
     res.json(rows);
   });
 });
 
+// ================= FONCTIONS GÉOMÉTRIQUES ET INTERPOLATION =================
+
+function distanceBetween(lat1, lon1, lat2, lon2) {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+            Math.cos(lat1 * Math.PI/180) * Math.cos(lat2 * Math.PI/180) *
+            Math.sin(dLon/2) * Math.sin(dLon/2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  return R * c;
+}
+
+function pointToSegmentDistance(px, py, x1, y1, x2, y2) {
+  const vx = x2 - x1;
+  const vy = y2 - y1;
+  const dx = px - x1;
+  const dy = py - y1;
+  const dot = vx * dx + vy * dy;
+  const len2 = vx * vx + vy * vy;
+  if (len2 === 0) return distanceBetween(px, py, x1, y1);
+  let t = dot / len2;
+  if (t < 0) t = 0;
+  if (t > 1) t = 1;
+  const projX = x1 + t * vx;
+  const projY = y1 + t * vy;
+  return distanceBetween(px, py, projX, projY);
+}
+
+function pointToSegmentProjection(px, py, x1, y1, x2, y2) {
+  const vx = x2 - x1;
+  const vy = y2 - y1;
+  const dx = px - x1;
+  const dy = py - y1;
+  const dot = vx * dx + vy * dy;
+  const len2 = vx * vx + vy * vy;
+  if (len2 === 0) return 0;
+  let t = dot / len2;
+  if (t < 0) t = 0;
+  if (t > 1) t = 1;
+  return t;
+}
+
+async function getArretsByLigne(ligneId) {
+  return new Promise((resolve, reject) => {
+    db.query(
+      `SELECT a.id, a.nom, a.latitude, a.longitude, la.ordre
+       FROM arrets_bus a
+       JOIN ligne_arrets la ON a.id = la.arret_id
+       WHERE la.ligne_id = ?
+       ORDER BY la.ordre`,
+      [ligneId],
+      (err, rows) => {
+        if (err) reject(err);
+        else resolve(rows);
+      }
+    );
+  });
+}
+
+async function getInterpolatedOrder(lat, lon, ligneId, seuilM = 100) {
+  const arrets = await getArretsByLigne(ligneId);
+  if (arrets.length < 2) return null;
+  let minDist = Infinity;
+  let bestOrdre = null;
+  for (let i = 0; i < arrets.length - 1; i++) {
+    const a1 = arrets[i];
+    const a2 = arrets[i+1];
+    const dist = pointToSegmentDistance(lat, lon, a1.latitude, a1.longitude, a2.latitude, a2.longitude);
+    if (dist < minDist && dist < seuilM / 1000) {
+      minDist = dist;
+      const t = pointToSegmentProjection(lat, lon, a1.latitude, a1.longitude, a2.latitude, a2.longitude);
+      bestOrdre = a1.ordre + t * (a2.ordre - a1.ordre);
+    }
+  }
+  return bestOrdre;
+}
+
+async function getOrdreForPoint(lat, lon, ligneId) {
+  // 1. Arrêt réel proche (rayon 50 m)
+  const arretsProches = await findArretsProches(lat, lon, 50);
+  for (const a of arretsProches) {
+    const lignes = await getLignesByArret(a.id);
+    if (lignes.some(l => l.id === ligneId)) {
+      return await getOrdreArret(ligneId, a.id);
+    }
+  }
+  // 2. Interpolation
+  return await getInterpolatedOrder(lat, lon, ligneId);
+}
+
+// ================= ITINÉRAIRE PRINCIPAL =================
 app.get("/api/transport/itineraires", async (req, res) => {
   const { lat_depart, lon_depart, lat_arrivee, lon_arrivee } = req.query;
   if (!lat_depart || !lon_depart || !lat_arrivee || !lon_arrivee) {
@@ -806,17 +918,15 @@ app.get("/api/transport/itineraires", async (req, res) => {
   }
 
   try {
-    const arretsDepart = await findArretsProches(lat_depart, lon_depart, 300);
-    const arretsArrivee = await findArretsProches(lat_arrivee, lon_arrivee, 300);
-
-    console.log("🚏 Arrêts depart trouvés:", arretsDepart.map(a => a.nom));
-    console.log("🚏 Arrêts arrivee trouvés:", arretsArrivee.map(a => a.nom));
+    const arretsDepart = await findArretsProches(lat_depart, lon_depart, 500);
+    const arretsArrivee = await findArretsProches(lat_arrivee, lon_arrivee, 500);
 
     if (arretsDepart.length === 0 || arretsArrivee.length === 0) {
       return res.json({ itineraires: [], message: "Aucun arrêt trouvé à proximité" });
     }
 
     const itineraires = [];
+    const processed = new Set();
 
     for (const arretDep of arretsDepart) {
       for (const arretArr of arretsArrivee) {
@@ -825,20 +935,18 @@ app.get("/api/transport/itineraires", async (req, res) => {
         const lignesDep = await getLignesByArret(arretDep.id);
         const lignesArr = await getLignesByArret(arretArr.id);
 
-        console.log(`🔍 ${arretDep.nom} → lignes:`, lignesDep.map(l => l.numero));
-        console.log(`🔍 ${arretArr.nom} → lignes:`, lignesArr.map(l => l.numero));
-
         for (const ligneDep of lignesDep) {
           const ligneArr = lignesArr.find(l => l.id === ligneDep.id);
           if (!ligneArr) continue;
 
-          const ordreDep = await getOrdreArret(ligneDep.id, arretDep.id);
-          const ordreArr = await getOrdreArret(ligneDep.id, arretArr.id);
+          const ordreDep = await getOrdreForPoint(arretDep.latitude, arretDep.longitude, ligneDep.id);
+          const ordreArr = await getOrdreForPoint(arretArr.latitude, arretArr.longitude, ligneDep.id);
 
-          console.log(`📍 Ligne ${ligneDep.numero}: ordre depart=${ordreDep}, ordre arrivee=${ordreArr}`);
-
-          // Accepter les deux sens
           if (ordreDep !== null && ordreArr !== null && ordreDep !== ordreArr) {
+            const key = `${ligneDep.id}_${arretDep.id}_${arretArr.id}`;
+            if (processed.has(key)) continue;
+            processed.add(key);
+
             const horaires = await getHorairesProchains(ligneDep.id);
             itineraires.push({
               ligne: {
@@ -918,9 +1026,9 @@ app.get("/api/transport/itineraires", async (req, res) => {
   }
 });
 
-// ================= FONCTIONS UTILITAIRES (transport) =================
-// Note: Ces fonctions utilisent db, donc doivent être déclarées après la connexion.
-
+// ================= FONCTIONS UTILITAIRES DE BASE (à garder une seule fois) =================
+// Ces fonctions sont utilisées aussi bien par le transport urbain que par d'autres parties.
+// Assurez-vous qu'elles ne sont pas définies ailleurs dans le fichier.
 function findArretsProches(lat, lon, rayon) {
   return new Promise((resolve, reject) => {
     const distance = rayon / 111000;
@@ -983,34 +1091,6 @@ function getHorairesProchains(ligneId) {
     );
   });
 }
-
-
-
-// =======================================================
-// ================= TEST ================================
-// =======================================================
-app.get("/api/test", (req, res) => {
-  db.query("SELECT 1+1 AS result", (err, results) => {
-    if (err) return res.json({ status: "MySQL ❌", error: err.message });
-    res.json({ status: "MySQL ✅", solution: results[0].result, database: process.env.DB_NAME });
-  });
-});
-
-// Rechercher des arrêts par nom (autocomplétion)
-app.get("/api/transport/arrets/search", (req, res) => {
-  const { q } = req.query;
-  if (!q || q.trim().length < 2) {
-    return res.status(400).json({ message: "Requête trop courte" });
-  }
-  db.query(
-    `SELECT id, nom, latitude, longitude FROM arrets_bus WHERE nom LIKE ? ORDER BY nom LIMIT 8`,
-    [`%${q.trim()}%`],
-    (err, rows) => {
-      if (err) return res.status(500).json({ message: "Erreur serveur" });
-      res.json(rows);
-    }
-  );
-});
 
 // ================= SERVER =================
 const PORT = process.env.PORT || 3000;

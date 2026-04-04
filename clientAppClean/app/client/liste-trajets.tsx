@@ -17,38 +17,24 @@ export default function ListeTrajets() {
   const [trajets, setTrajets] = useState<Trajet[]>([]);
   const [filteredTrajets, setFilteredTrajets] = useState<Trajet[]>([]);
   const [loading, setLoading] = useState(true);
-  
-  // États pour les filtres
-  const [searchDepart, setSearchDepart] = useState("");
-  const [searchDestination, setSearchDestination] = useState("");
-  const [searchDate, setSearchDate] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
 
   useEffect(() => {
     fetchTrajets();
   }, []);
 
-  // Filtrer les trajets à chaque changement des critères
   useEffect(() => {
-    let filtered = trajets;
-    
-    if (searchDepart.trim()) {
-      filtered = filtered.filter(t => 
-        t.depart.toLowerCase().includes(searchDepart.toLowerCase())
-      );
+    if (!searchQuery.trim()) {
+      setFilteredTrajets(trajets);
+      return;
     }
-    if (searchDestination.trim()) {
-      filtered = filtered.filter(t => 
-        t.destination.toLowerCase().includes(searchDestination.toLowerCase())
-      );
-    }
-    if (searchDate.trim()) {
-      filtered = filtered.filter(t => 
-        t.heure.split("T")[0] === searchDate // format YYYY-MM-DD
-      );
-    }
-    
+    const query = searchQuery.toLowerCase();
+    const filtered = trajets.filter(t => 
+      t.depart.toLowerCase().includes(query) || 
+      t.destination.toLowerCase().includes(query)
+    );
     setFilteredTrajets(filtered);
-  }, [searchDepart, searchDestination, searchDate, trajets]);
+  }, [searchQuery, trajets]);
 
   const fetchTrajets = async () => {
     try {
@@ -82,37 +68,23 @@ export default function ListeTrajets() {
     <View style={styles.container}>
       <Text style={styles.title}>Trajets disponibles</Text>
 
-      {/* Champs de recherche */}
-      <View style={styles.searchContainer}>
-        <TextInput
-          style={styles.searchInput}
-          placeholder="Départ (ex: Dakar)"
-          placeholderTextColor="#9AA4BF"
-          value={searchDepart}
-          onChangeText={setSearchDepart}
-        />
-        <TextInput
-          style={styles.searchInput}
-          placeholder="Destination (ex: Saint-Louis)"
-          placeholderTextColor="#9AA4BF"
-          value={searchDestination}
-          onChangeText={setSearchDestination}
-        />
-        <TextInput
-          style={styles.searchInput}
-          placeholder="Date (YYYY-MM-DD)"
-          placeholderTextColor="#9AA4BF"
-          value={searchDate}
-          onChangeText={setSearchDate}
-        />
-      </View>
+      {/* Barre de recherche unique */}
+      <TextInput
+        style={styles.searchInput}
+        placeholder="Rechercher un trajet (départ ou destination)"
+        placeholderTextColor="#9AA4BF"
+        value={searchQuery}
+        onChangeText={setSearchQuery}
+      />
 
       <FlatList
         data={filteredTrajets}
         keyExtractor={(item) => item.id.toString()}
         contentContainerStyle={{ paddingBottom: 20 }}
         ListEmptyComponent={
-          <Text style={styles.emptyText}>Aucun trajet ne correspond à vos critères.</Text>
+          <Text style={styles.emptyText}>
+            {searchQuery ? "Aucun trajet ne correspond à votre recherche." : "Aucun trajet disponible pour le moment."}
+          </Text>
         }
         renderItem={({ item }) => (
           <View style={styles.card}>
@@ -148,13 +120,12 @@ const styles = StyleSheet.create({
   center: { flex: 1, justifyContent: "center", alignItems: "center" },
   loadingText: { color: "#9AA4BF", marginTop: 10 },
   emptyText: { color: "#9AA4BF", textAlign: "center", marginTop: 50 },
-  searchContainer: { marginBottom: 16 },
   searchInput: {
     backgroundColor: "#1C2541",
     color: "#fff",
     padding: 12,
     borderRadius: 10,
-    marginBottom: 8,
+    marginBottom: 16,
     fontSize: 14,
   },
   card: { backgroundColor: "#1C2541", borderRadius: 16, padding: 16, marginBottom: 14 },

@@ -292,17 +292,13 @@ export async function updateDemande(id: number, payload: {
 
 
 
-// ==============================
-// 🌍 GÉOCODAGE (Google Maps)
-// ==============================
-
 // lib/api.ts
 
 
 const GOOGLE_API_KEY = process.env.EXPO_PUBLIC_GOOGLE_MAPS_KEY;
 // ... (gardez vos fonctions existantes : saveToken, login, register, fetchWithAuth, etc.)
-
-// ==============================
+console.log("🔑 Clé API lue :", GOOGLE_API_KEY ? "Oui (longueur " + GOOGLE_API_KEY.length + ")" : "NON");
+// =============================
 // 🌍 GÉOCODAGE (Google Maps)
 // ==============================
 
@@ -393,5 +389,32 @@ export async function getPlaceDetails(placeId: string): Promise<{ lat: number; l
   } catch (error) {
     console.error("Erreur place details:", error);
     return null;
+  }
+}
+// ==============================
+// 🚌 RECHERCHE D'ARRÊTS (autocomplétion depuis la BDD)
+// ==============================
+
+export async function searchArrets(query: string): Promise<Array<{
+  id: number;
+  nom: string;
+  latitude: number;
+  longitude: number;
+}>> {
+  try {
+    const response = await fetch(
+      `${API_URL}/api/transport/arrets/search?q=${encodeURIComponent(query)}`,
+      {
+        headers: {
+          "Accept": "application/json",
+          "Content-Type": "application/json",
+        },
+      }
+    );
+    if (!response.ok) return [];
+    return await response.json();
+  } catch (error) {
+    console.error("Erreur searchArrets:", error);
+    return [];
   }
 }
