@@ -60,7 +60,7 @@ export default function DriverTripDetailScreen() {
         return;
       }
 
-      const res = await fetch(`${API_URL}/api/trips/driver_requests`, {
+      const res = await fetch(`${API_URL}/api/trips/reservations`, {
         method: "GET",
         headers: {
           "Content-Type": "application/json",
@@ -155,6 +155,9 @@ export default function DriverTripDetailScreen() {
 
         <Text style={styles.label}>Places disponibles</Text>
         <Text style={styles.value}>{trip.places}</Text>
+
+        <Text style={styles.label}>Prix</Text>
+        <Text style={styles.value}>{trip.prix}</Text>
 
         <View style={styles.buttonRow}>
           <TouchableOpacity
