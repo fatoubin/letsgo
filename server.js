@@ -1,8 +1,8 @@
 // ================= IMPORTS =================
+require("dotenv").config();
 const express = require("express");
 const mysql = require("mysql2");
 const cors = require("cors");
-require("dotenv").config();
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const helmet = require("helmet");
@@ -157,11 +157,11 @@ app.post("/api/client/trajets", authenticate, (req, res) => {
 
 app.post("/api/client/demandes", authenticate, (req, res) => {
   const { depart, destination, date_depart, heure_depart, places, prix, trip_id } = req.body;
-  if (!depart || !destination || !date_depart || !heure_depart || !places || !Prix)
+  if (!depart || !destination || !date_depart || !heure_depart || !places || !prix)
     return res.status(400).json({ message: "Champs manquants" });
 
   db.query(
-    "INSERT INTO demandes (user_id, depart, destination, date_depart, heure_depart, places, Prix, trip_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+    "INSERT INTO demandes (user_id, depart, destination, date_depart, heure_depart, places, prix, trip_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
     [req.user.id, depart, destination, date_depart, heure_depart, places, trip_id || null],
     (err, result) => {
       if (err) return res.status(500).json({ message: "Erreur serveur" });
@@ -255,43 +255,195 @@ app.post("/api/driver/register", async (req, res) => {
 // ── Login chauffeur (retourne JWT) ──
 app.post("/api/driver/login", (req, res) => {
   const { email, password } = req.body;
-  if (!email || !password)
-    return res.status(400).json({ message: "Email et mot de passe requis" });
+  
+  if (!email || !password) {
+    return res.status(400).json({ message: "Email/téléphone et mot de passe requis" });
+  }
 
-  db.query(
-    `SELECT u.*, d.id as driver_id, d.vehicle_type, d.license_number, d.vehicle_plate, d.seats
-     FROM users u JOIN drivers d ON d.user_id = u.id WHERE u.email = ?`,
-    [email],
-    async (err, results) => {
-      if (err) return res.status(500).json({ message: "Erreur serveur" });
-      if (results.length === 0) return res.status(401).json({ message: "Email ou mot de passe incorrect" });
+  // Vérifier si l'identifiant est un email ou un téléphone
+  const isEmail = email.includes("@") && email.includes(".");
+  const isPhone = /^(\+221)?[0-9]{9,12}$/.test(email) || /^[0-9]{9,12}$/.test(email);
+  
+  let query;
+  let params;
+  
+  if (isEmail) {
+    query = `SELECT u.*, d.id as driver_id, d.vehicle_type, d.license_number, d.vehicle_plate, d.seats
+             FROM users u 
+             JOIN drivers d ON d.user_id = u.id 
+             WHERE u.email = ?`;
+    params = [email];
+  } else if (isPhone) {
+    // Nettoyer le numéro de téléphone
+    let cleanPhone = email.replace(/[^0-9]/g, "");
+    if (cleanPhone.startsWith("221")) {
+      cleanPhone = cleanPhone.substring(3);
+    }
+    query = `SELECT u.*, d.id as driver_id, d.vehicle_type, d.license_number, d.vehicle_plate, d.seats
+             FROM users u 
+             JOIN drivers d ON d.user_id = u.id 
+             WHERE u.telephone LIKE ?`;
+    params = [`%${cleanPhone}`];
+  } else {
+    return res.status(400).json({ message: "Format d'identifiant invalide" });
+  }
 
-      const user = results[0];
-      const match = await bcrypt.compare(password, user.password);
-      if (!match) return res.status(401).json({ message: "Email ou mot de passe incorrect" });
+  console.log(`🔐 Tentative login chauffeur avec: ${email} (${isEmail ? "email" : "téléphone"})`);
 
-      const token = jwt.sign(
-        { id: user.id, email: user.email, driverId: user.driver_id },
-        process.env.JWT_SECRET,
-        { expiresIn: "7d" }
-      );
+  db.query(query, params, async (err, results) => {
+    if (err) {
+      console.error("❌ Erreur DB:", err);
+      return res.status(500).json({ message: "Erreur serveur" });
+    }
+    
+    if (results.length === 0) {
+      console.log("❌ Identifiant non trouvé:", email);
+      return res.status(401).json({ message: "Email/téléphone ou mot de passe incorrect" });
+    }
 
-      res.json({
-        token,
-        user: {
-          id: user.id,
-          email: user.email,
-          nom: user.nom,
-          prenom: user.prenom,
-          telephone: user.telephone,
-          driverId: user.driver_id,
-          vehicle_type: user.vehicle_type,
-          vehicle_plate: user.vehicle_plate,
-          seats: user.seats
+    const user = results[0];
+    const match = await bcrypt.compare(password, user.password);
+    
+    if (!match) {
+      console.log("❌ Mot de passe incorrect pour:", email);
+      return res.status(401).json({ message: "Email/téléphone ou mot de passe incorrect" });
+    }
+
+    if (!process.env.JWT_SECRET) {
+      console.error("❌ JWT_SECRET non défini dans .env");
+      return res.status(500).json({ message: "Erreur configuration serveur" });
+    }
+
+    const token = jwt.sign(
+      { 
+        id: user.id, 
+        email: user.email, 
+        driverId: user.driver_id 
+      },
+      process.env.JWT_SECRET,
+      { expiresIn: "7d" }
+    );
+
+    console.log("✅ Login chauffeur réussi pour:", user.email);
+    console.log("👤 driverId:", user.driver_id);
+
+    res.json({
+      token,
+      user: {
+        id: user.id,
+        email: user.email,
+        nom: user.nom,
+        prenom: user.prenom,
+        telephone: user.telephone,
+        driverId: user.driver_id,
+        vehicle_type: user.vehicle_type,
+        vehicle_plate: user.vehicle_plate,
+        seats: user.seats
+      }
+    });
+  });
+});
+
+// ── Refresh token pour "Se souvenir de moi" ──
+app.post("/api/driver/refresh", (req, res) => {
+  const { refreshToken } = req.body;
+  
+  if (!refreshToken) {
+    return res.status(400).json({ message: "Refresh token manquant" });
+  }
+  
+  try {
+    const decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET);
+    
+    const newToken = jwt.sign(
+      { id: decoded.id, email: decoded.email, driverId: decoded.driverId },
+      process.env.JWT_SECRET,
+      { expiresIn: "7d" }
+    );
+    
+    res.json({ token: newToken });
+  } catch (err) {
+    res.status(401).json({ message: "Refresh token invalide" });
+  }
+});
+
+
+// ── Google Login (à intégrer plus tard) ──
+app.post("/api/driver/google-login", async (req, res) => {
+  const { googleToken, email, name } = req.body;
+  
+  if (!googleToken || !email) {
+    return res.status(400).json({ message: "Token Google manquant" });
+  }
+  
+  // Vérifier si l'utilisateur existe déjà
+  db.query("SELECT * FROM users WHERE email = ?", [email], async (err, results) => {
+    if (err) return res.status(500).json({ message: "Erreur serveur" });
+    
+    let userId;
+    let driverId;
+    
+    if (results.length === 0) {
+      // Créer un nouveau compte
+      const randomPassword = Math.random().toString(36).substring(2) + Date.now().toString();
+      const hashedPassword = await bcrypt.hash(randomPassword, 10);
+      
+      db.query(
+        "INSERT INTO users (nom, prenom, email, password, role) VALUES (?, ?, ?, ?, 'driver')",
+        [name?.split(" ")[0] || "Google", name?.split(" ")[1] || "User", email, hashedPassword],
+        (err, result) => {
+          if (err) return res.status(500).json({ message: "Erreur création compte" });
+          
+          userId = result.insertId;
+          
+          db.query(
+            "INSERT INTO drivers (user_id, is_online) VALUES (?, false)",
+            [userId],
+            (err2, result2) => {
+              if (err2) return res.status(500).json({ message: "Erreur création chauffeur" });
+              
+              driverId = result2.insertId;
+              
+              const token = jwt.sign(
+                { id: userId, email: email, driverId: driverId },
+                process.env.JWT_SECRET,
+                { expiresIn: "7d" }
+              );
+              
+              res.json({
+                token,
+                user: { id: userId, email, nom: name?.split(" ")[0] || "Google", prenom: name?.split(" ")[1] || "User", driverId }
+              });
+            }
+          );
         }
+      );
+    } else {
+      // Utilisateur existe déjà
+      const user = results[0];
+      
+      // Vérifier si c'est un chauffeur
+      db.query("SELECT id FROM drivers WHERE user_id = ?", [user.id], (err, driverResults) => {
+        if (err) return res.status(500).json({ message: "Erreur serveur" });
+        
+        let existingDriverId = null;
+        if (driverResults.length > 0) {
+          existingDriverId = driverResults[0].id;
+        }
+        
+        const token = jwt.sign(
+          { id: user.id, email: user.email, driverId: existingDriverId },
+          process.env.JWT_SECRET,
+          { expiresIn: "7d" }
+        );
+        
+        res.json({
+          token,
+          user: { id: user.id, email: user.email, nom: user.nom, prenom: user.prenom, driverId: existingDriverId }
+        });
       });
     }
-  );
+  });
 });
 
 // ── Profil chauffeur ──
