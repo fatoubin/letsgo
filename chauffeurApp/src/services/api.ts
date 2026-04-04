@@ -193,6 +193,14 @@ export async function rejectReservation(reservationId: number) {
 }
 
 /* =========================
+Résevation passager
+========================= */
+
+export async function getTripReservations(tripId: number) {
+  return fetchWithAuth(`/api/trips/reservations?trip_id=${tripId}`);
+}
+
+/* =========================
    📊 STATS CHAUFFEUR
 ========================= */
 

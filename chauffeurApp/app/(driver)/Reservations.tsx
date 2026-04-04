@@ -17,7 +17,7 @@ import { COLORS } from "../../src/styles/colors";
 import { globalStyles } from "../../src/styles/globalStyles";
 
 // ✅ API
-import { getDriverRequests, fetchWithAuth } from "../../src/services/api";
+import {getTripReservations, fetchWithAuth } from "../../src/services/api";
 
 type Reservation = {
 id:number
@@ -56,7 +56,7 @@ const fetchReservations = async()=>{
 
 try{
 
-const data = await getDriverRequests(driverId)
+const data = await getTripReservations(driverId)
 setReservations(data || [])
 
 }catch(e){

@@ -454,6 +454,7 @@ app.post("/api/trips/reservation_action", authenticateDriver, (req, res) => {
             // 3. update demande
             db.query(
               "UPDATE demandes SET status = 'accepted' WHERE id = ?",
+              
               [reservation_id]
             );
 
@@ -531,6 +532,45 @@ app.post("/api/trips/update", authenticateDriver, (req, res) => {
     }
   );
 });
+
+// ── Supprimer un trajet ──
+app.delete("/api/trips/delete/:id", authenticateDriver, (req, res) => {
+  const tripId = req.params.id;
+
+  // 1. Vérifier s'il y a des réservations liées
+  db.query(
+    "SELECT COUNT(*) AS total FROM demandes WHERE trip_id = ? AND status != 'rejected'",
+    [tripId],
+    (err, result) => {
+      if (err) {
+        return res.status(500).json({ message: "Erreur serveur" });
+      }
+      if (result[0].total > 0) {
+        return res.status(400).json({
+          message: "Impossible de supprimer : des réservations existent"
+        });
+      }
+
+      // 2. Supprimer le trajet
+      db.query(
+        "DELETE FROM trajets WHERE id = ?",
+        [tripId],
+        (err2, result2) => {
+          if (err2) {
+            return res.status(500).json({ message: "Erreur suppression" });
+          }
+          if (result2.affectedRows === 0) {
+            return res.status(404).json({ message: "Trajet introuvable" });
+          }
+          res.json({ success: true, message: "Trajet supprimé" });
+        }
+      );
+    }
+  );
+});
+
+
+
 
 // ================= TRANSPORT URBAIN =================
 
@@ -792,41 +832,7 @@ function getHorairesProchains(ligneId) {
   });
 }
 
-// ── Supprimer un trajet ──
-app.delete("/api/trips/delete/:id", authenticateDriver, (req, res) => {
-  const tripId = req.params.id;
 
-  // 1. Vérifier s'il y a des réservations liées
-  db.query(
-    "SELECT COUNT(*) AS total FROM demandes WHERE trip_id = ? AND status != 'rejected'",
-    [tripId],
-    (err, result) => {
-      if (err) {
-        return res.status(500).json({ message: "Erreur serveur" });
-      }
-      if (result[0].total > 0) {
-        return res.status(400).json({
-          message: "Impossible de supprimer : des réservations existent"
-        });
-      }
-
-      // 2. Supprimer le trajet
-      db.query(
-        "DELETE FROM trajets WHERE id = ?",
-        [tripId],
-        (err2, result2) => {
-          if (err2) {
-            return res.status(500).json({ message: "Erreur suppression" });
-          }
-          if (result2.affectedRows === 0) {
-            return res.status(404).json({ message: "Trajet introuvable" });
-          }
-          res.json({ success: true, message: "Trajet supprimé" });
-        }
-      );
-    }
-  );
-});
 
 // =======================================================
 // ================= TEST ================================
