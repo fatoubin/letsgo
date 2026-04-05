@@ -192,6 +192,17 @@ export default function DriverTripDetailScreen() {
         })}
       />
 
+
+      // Ajoutez ceci après le bouton "Voir l'itinéraire sur la carte"
+      <PrimaryButton
+        title="Voir les réservations"
+        style={{ marginTop: 10 }}
+        onPress={() => router.push({
+          pathname: "/(driver)/Reservations",
+          params: { tripId: trip.id }
+        })}
+      />
+
       <Text style={styles.sectionTitle}>
         Réservations ({reservations.length})
       </Text>

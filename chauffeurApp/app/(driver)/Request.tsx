@@ -13,9 +13,7 @@ import * as SecureStore from "expo-secure-store";
 
 import { COLORS } from "../../src/styles/colors";
 import { globalStyles } from "../../src/styles/globalStyles";
-
-// ✅ API corrigée
-import { getDriverRequests, fetchWithAuth } from "../../src/services/api";
+import { getDriverRequests, acceptReservation, rejectReservation } from "../../src/services/api";
 
 type Request = {
   id: number;
@@ -29,7 +27,6 @@ type Request = {
 };
 
 export default function DriverRequestsScreen() {
-
   const [driverId, setDriverId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [requests, setRequests] = useState<Request[]>([]);
@@ -62,41 +59,21 @@ export default function DriverRequestsScreen() {
     }
   };
 
-  // ✅ ACCEPT
   const handleAccept = async (id: number) => {
     try {
-      await fetchWithAuth("/api/trips/reservation_action", {
-        method: "POST",
-        body: JSON.stringify({
-          reservation_id: id,
-          status: "accepted"
-        })
-      });
-
+      await acceptReservation(id);
       Alert.alert("✅ Succès", "Réservation acceptée");
-
       if (driverId) fetchRequests(driverId);
-
     } catch (e) {
       Alert.alert("Erreur", "Action impossible");
     }
   };
 
-  // ✅ REJECT
   const handleReject = async (id: number) => {
     try {
-      await fetchWithAuth("/api/trips/reservation_action", {
-        method: "POST",
-        body: JSON.stringify({
-          reservation_id: id,
-          status: "rejected"
-        })
-      });
-
+      await rejectReservation(id);
       Alert.alert("Refusée", "Réservation refusée");
-
       if (driverId) fetchRequests(driverId);
-
     } catch (e) {
       Alert.alert("Erreur", "Action impossible");
     }
@@ -104,59 +81,31 @@ export default function DriverRequestsScreen() {
 
   const renderItem = ({ item }: { item: Request }) => (
     <View style={styles.card}>
-
       <Text style={styles.route}>
         {item.depart} → {item.destination}
       </Text>
-
-      <Text style={styles.info}>
-        👤 {item.prenom} {item.nom}
-      </Text>
-
-      <Text style={styles.info}>
-        📞 {item.telephone}
-      </Text>
-
-      {/* ⚠️ date/heure supprimé car backend ne les envoie pas */}
-
-      <Text style={styles.info}>
-        💺 {item.places} place(s) demandée(s)
-      </Text>
+      <Text style={styles.info}>👤 {item.prenom} {item.nom}</Text>
+      <Text style={styles.info}>📞 {item.telephone}</Text>
+      <Text style={styles.info}>💺 {item.places} place(s) demandée(s)</Text>
 
       <View style={styles.actions}>
-
         {item.status === "pending" && (
           <>
-            <TouchableOpacity
-              style={styles.accept}
-              onPress={() => handleAccept(item.id)}
-            >
+            <TouchableOpacity style={styles.accept} onPress={() => handleAccept(item.id)}>
               <Text style={styles.actionText}>✓ Accepter</Text>
             </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.reject}
-              onPress={() => handleReject(item.id)}
-            >
+            <TouchableOpacity style={styles.reject} onPress={() => handleReject(item.id)}>
               <Text style={styles.actionText}>✕ Refuser</Text>
             </TouchableOpacity>
           </>
         )}
-
         {item.status === "accepted" && (
-          <Text style={[styles.actionText, { color: COLORS.success }]}>
-            ✔ Acceptée
-          </Text>
+          <Text style={[styles.statusText, { color: COLORS.success }]}>✔ Acceptée</Text>
         )}
-
         {item.status === "rejected" && (
-          <Text style={[styles.actionText, { color: COLORS.danger }]}>
-            ✖ Refusée
-          </Text>
+          <Text style={[styles.statusText, { color: COLORS.danger }]}>✖ Refusée</Text>
         )}
-
       </View>
-
     </View>
   );
 
@@ -170,9 +119,7 @@ export default function DriverRequestsScreen() {
 
   return (
     <View style={globalStyles.screen}>
-
       <Text style={styles.title}>Demandes de réservation</Text>
-
       {requests.length === 0 ? (
         <Text style={styles.empty}>Aucune demande pour le moment.</Text>
       ) : (
@@ -183,66 +130,20 @@ export default function DriverRequestsScreen() {
           showsVerticalScrollIndicator={false}
         />
       )}
-
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  center: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center"
-  },
-  title: {
-    color: COLORS.textLight,
-    fontSize: 22,
-    fontWeight: "600",
-    marginBottom: 20,
-    textAlign: "center"
-  },
-  empty: {
-    color: COLORS.textMuted,
-    textAlign: "center",
-    marginTop: 40,
-    fontSize: 16
-  },
-  card: {
-    backgroundColor: "#fff",
-    borderRadius: 14,
-    padding: 16,
-    marginBottom: 14
-  },
-  route: {
-    fontSize: 16,
-    fontWeight: "700",
-    marginBottom: 8,
-    color: "#111"
-  },
-  info: {
-    fontSize: 14,
-    color: "#555",
-    marginBottom: 4
-  },
-  actions: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginTop: 14
-  },
-  accept: {
-    backgroundColor: COLORS.success,
-    paddingVertical: 10,
-    paddingHorizontal: 24,
-    borderRadius: 10
-  },
-  reject: {
-    backgroundColor: COLORS.danger,
-    paddingVertical: 10,
-    paddingHorizontal: 24,
-    borderRadius: 10
-  },
-  actionText: {
-    color: "#fff",
-    fontWeight: "600"
-  }
+  center: { flex: 1, justifyContent: "center", alignItems: "center" },
+  title: { color: COLORS.textLight, fontSize: 22, fontWeight: "600", marginBottom: 20, textAlign: "center" },
+  empty: { color: COLORS.textMuted, textAlign: "center", marginTop: 40, fontSize: 16 },
+  card: { backgroundColor: "#fff", borderRadius: 14, padding: 16, marginBottom: 14 },
+  route: { fontSize: 16, fontWeight: "700", marginBottom: 8, color: "#111" },
+  info: { fontSize: 14, color: "#555", marginBottom: 4 },
+  actions: { flexDirection: "row", justifyContent: "space-between", marginTop: 14 },
+  accept: { backgroundColor: COLORS.success, paddingVertical: 10, paddingHorizontal: 24, borderRadius: 10 },
+  reject: { backgroundColor: COLORS.danger, paddingVertical: 10, paddingHorizontal: 24, borderRadius: 10 },
+  actionText: { color: "#fff", fontWeight: "600" },
+  statusText: { fontSize: 14, fontWeight: "600", textAlign: "center", paddingVertical: 10 }
 });

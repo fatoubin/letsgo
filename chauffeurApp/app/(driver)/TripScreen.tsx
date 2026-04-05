@@ -91,6 +91,10 @@ export default function DriverTripsScreen() {
           💺 {item.places} place(s)
         </Text>
 
+        <Text style={styles.meta}>
+           {item.prix} FCFA
+        </Text>
+
         <Text style={[styles.status, { color: status.color }]}>
           ● {status.label}
         </Text>

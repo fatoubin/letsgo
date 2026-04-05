@@ -520,27 +520,6 @@ app.get("/api/trips/driver_requests", authenticateDriver, (req, res) => {
   );
 
 });
-// ── Récupérer les réservations (alias pour driver_requests)
-app.get("/api/trips/reservations", authenticateDriver, (req, res) => {
-  db.query(
-    `SELECT 
-      dm.id,
-      dm.depart,
-      dm.destination,
-      dm.places,
-      dm.status,
-      u.nom,
-      u.prenom,
-      u.telephone
-     FROM demandes dm
-     JOIN users u ON dm.user_id = u.id
-     ORDER BY dm.created_at DESC`,
-    (err, results) => {
-      if (err) return res.status(500).json({ message: "Erreur serveur" });
-      res.json(results);
-    }
-  );
-});
 
 // ── Stats chauffeur ──
 app.get("/api/driver/stats", authenticateDriver, (req, res) => {
@@ -616,8 +595,8 @@ app.post("/api/trips/reservation_action", authenticateDriver, (req, res) => {
       if (status === "accepted") {
 
         db.query(
-          "INSERT INTO reservations (trip_id, user_id, places) VALUES (?, ?, ?)",
-          [demande.trip_id, demande.user_id, demande.places],
+          "INSERT INTO reservations (trip_id, user_id, places, prix) VALUES (?, ?, ?, ?)",
+          [demande.trip_id, demande.user_id, demande.places, demande.places],
           (err2) => {
 
             if (err2) {
@@ -656,32 +635,36 @@ app.post("/api/trips/reservation_action", authenticateDriver, (req, res) => {
 
 });
 
-//Récuperer les reservation
-app.get("/api/trips/reservations", authenticateDriver, (req, res) => {
 
+// Récupérer les réservations d'un trajet spécifique
+app.get("/api/trips/reservations", authenticateDriver, (req, res) => {
   const { trip_id } = req.query;
 
-  db.query(
-    `SELECT 
+  if (!trip_id) {
+    return res.status(400).json({ message: "trip_id requis" });
+  }
+
+  const query = `
+    SELECT 
       r.id,
       r.places,
+      r.status,
       u.nom,
       u.prenom,
       u.telephone
-     FROM reservations r
-     JOIN users u ON r.user_id = u.id
-     WHERE r.trip_id = ?
-     ORDER BY r.created_at DESC`,
-    [trip_id],
-    (err, results) => {
+    FROM reservations r
+    JOIN users u ON r.user_id = u.id
+    WHERE r.trip_id = ?
+    ORDER BY r.created_at DESC
+  `;
 
-      if (err) return res.status(500).json({ message: "Erreur serveur" });
-
-      res.json(results);
-
+  db.query(query, [trip_id], (err, results) => {
+    if (err) {
+      console.error("❌ Erreur récupération réservations:", err);
+      return res.status(500).json({ message: "Erreur serveur" });
     }
-  );
-
+    res.json(results);
+  });
 });
 
 
