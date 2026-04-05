@@ -7,7 +7,8 @@ import {
   ActivityIndicator,
   TouchableOpacity,
   Linking,
-  Alert
+  Alert,
+  ScrollView
 } from "react-native";
 
 import { useRouter, useLocalSearchParams } from "expo-router";
@@ -15,11 +16,11 @@ import { useRouter, useLocalSearchParams } from "expo-router";
 import { COLORS } from "../../src/styles/colors";
 import { globalStyles } from "../../src/styles/globalStyles";
 import PrimaryButton from "../../src/components/PrimaryButton";
-import { 
-  acceptReservation, 
-  rejectReservation, 
+import {
+  acceptReservation,
+  rejectReservation,
   deleteTrip,
-  getToken  // ✅ AJOUT: Importer getToken
+  getToken
 } from "../../src/services/api";
 import { API_URL } from "../../src/services/api";
 
@@ -29,6 +30,7 @@ type Reservation = {
   prenom: string;
   telephone: string;
   places: number;
+  prix: number;
   status: "pending" | "accepted" | "rejected";
 };
 
@@ -37,7 +39,6 @@ export default function DriverTripDetailScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
 
-  // trip passé en JSON depuis TripScreen
   const trip = params?.trip ? JSON.parse(params.trip as string) : null;
 
   const [reservations, setReservations] = useState<Reservation[]>([]);
@@ -46,31 +47,32 @@ export default function DriverTripDetailScreen() {
   useEffect(() => {
     if (!trip?.id) { setLoading(false); return; }
     fetchReservations();
-  }, [trip]);
+  }, []);
 
-  // ✅ CORRECTION: Ajouter le token dans les headers
+  // ── ✅ CORRECTION : Filtrer par trip_id ──
   const fetchReservations = async () => {
     try {
-      const token = await getToken();  // Récupérer le token
-      console.log("🔑 Token présent:", token ? "Oui" : "Non");
-      
+      const token = await getToken();
+
       if (!token) {
-        console.log("❌ Pas de token, impossible de récupérer les réservations");
+        console.log("❌ Pas de token");
         setLoading(false);
         return;
       }
 
-      const res = await fetch(`${API_URL}/api/trips/reservations`, {
+      // ✅ Passer trip_id en query param pour filtrer les réservations du trajet
+      const res = await fetch(`${API_URL}/api/trips/reservations?trip_id=${trip.id}`, {
         method: "GET",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`  // ✅ AJOUT: Ajouter le token
+          Authorization: `Bearer ${token}`
         }
       });
-      
+
       const data = await res.json();
-      console.log("📥 RESERVATIONS =", JSON.stringify(data));
+      console.log("📥 RESERVATIONS trip", trip.id, "=", JSON.stringify(data));
       setReservations(Array.isArray(data) ? data : []);
+
     } catch (e) {
       console.log("❌ RESERVATIONS ERROR", e);
     } finally {
@@ -138,11 +140,11 @@ export default function DriverTripDetailScreen() {
   }
 
   return (
-    <View style={globalStyles.screen}>
+    <ScrollView style={globalStyles.screen}>
 
       <Text style={styles.title}>Détails du trajet</Text>
 
-      {/* ── Infos trajet (champs du backend) ── */}
+      {/* ── Infos trajet ── */}
       <View style={styles.card}>
         <Text style={styles.label}>Départ</Text>
         <Text style={styles.value}>{trip.depart}</Text>
@@ -157,23 +159,23 @@ export default function DriverTripDetailScreen() {
         <Text style={styles.value}>{trip.places}</Text>
 
         <Text style={styles.label}>Prix</Text>
-        <Text style={styles.value}>{trip.prix}</Text>
+        <Text style={styles.value}>
+          {trip.prix ? `${trip.prix} FCFA` : "Non défini"}
+        </Text>
 
         <View style={styles.buttonRow}>
           <TouchableOpacity
-            style={styles.edit}
-            onPress={() =>
-              router.push({
-                pathname: "/(driver)/TripEdit",
-                params: { trip: JSON.stringify(trip) }
-              })
-            }
+            style={styles.editBtn}
+            onPress={() => router.push({
+              pathname: "/(driver)/TripEdit",
+              params: { trip: JSON.stringify(trip) }
+            })}
           >
             <Text style={styles.actionText}>✏️ Modifier</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={styles.delete}
+            style={styles.deleteBtn}
             onPress={() => handleDelete(trip.id)}
           >
             <Text style={styles.actionText}>🗑️ Supprimer</Text>
@@ -190,62 +192,63 @@ export default function DriverTripDetailScreen() {
         })}
       />
 
-      <Text style={styles.sectionTitle}>Réservations</Text>
+      <Text style={styles.sectionTitle}>
+        Réservations ({reservations.length})
+      </Text>
 
       {loading ? (
-        <ActivityIndicator color={COLORS.primary} />
+        <ActivityIndicator color={COLORS.primary} style={{ marginTop: 20 }} />
       ) : reservations.length === 0 ? (
-        <Text style={styles.empty}>Aucune réservation</Text>
+        <Text style={styles.empty}>Aucune réservation pour ce trajet</Text>
       ) : (
-        <FlatList
-          data={reservations}
-          keyExtractor={(item) => item.id.toString()}
-          renderItem={({ item }) => (
-            <View style={styles.reservationCard}>
+        reservations.map((item) => (
+          <View key={item.id.toString()} style={styles.reservationCard}>
 
-              <View style={styles.row}>
-                <Text style={styles.resName}>{item.prenom} {item.nom}</Text>
-                {renderStatus(item.status)}
-              </View>
-
-              <Text style={styles.resInfo}>📞 {item.telephone}</Text>
-              <Text style={styles.resInfo}>💺 {item.places} place(s)</Text>
-
-              <View style={styles.actions}>
-
-                <TouchableOpacity
-                  style={styles.callButton}
-                  onPress={() => item.telephone && Linking.openURL(`tel:${item.telephone}`)}
-                >
-                  <Text style={styles.callText}>📞 Appeler</Text>
-                </TouchableOpacity>
-
-                {item.status === "pending" && (
-                  <>
-                    <TouchableOpacity
-                      style={styles.accept}
-                      onPress={() => handleAccept(item.id)}
-                    >
-                      <Text style={styles.actionText}>✓ Accepter</Text>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity
-                      style={styles.reject}
-                      onPress={() => handleReject(item.id)}
-                    >
-                      <Text style={styles.actionText}>✕ Refuser</Text>
-                    </TouchableOpacity>
-                  </>
-                )}
-
-              </View>
-
+            <View style={styles.row}>
+              <Text style={styles.resName}>{item.prenom} {item.nom}</Text>
+              {renderStatus(item.status)}
             </View>
-          )}
-        />
+
+            <Text style={styles.resInfo}>📞 {item.telephone}</Text>
+            <Text style={styles.resInfo}>💺 {item.places} place(s)</Text>
+            {item.prix ? (
+              <Text style={styles.resInfo}>💰 {item.prix} FCFA</Text>
+            ) : null}
+
+            <View style={styles.actions}>
+              <TouchableOpacity
+                style={styles.callButton}
+                onPress={() => item.telephone && Linking.openURL(`tel:${item.telephone}`)}
+              >
+                <Text style={styles.callText}>📞 Appeler</Text>
+              </TouchableOpacity>
+
+              {item.status === "pending" && (
+                <>
+                  <TouchableOpacity
+                    style={styles.accept}
+                    onPress={() => handleAccept(item.id)}
+                  >
+                    <Text style={styles.actionText}>✓ Accepter</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={styles.reject}
+                    onPress={() => handleReject(item.id)}
+                  >
+                    <Text style={styles.actionText}>✕ Refuser</Text>
+                  </TouchableOpacity>
+                </>
+              )}
+            </View>
+
+          </View>
+        ))
       )}
 
-    </View>
+      <View style={{ height: 40 }} />
+
+    </ScrollView>
   );
 }
 
@@ -257,7 +260,7 @@ const styles = StyleSheet.create({
   value: { fontSize: 16, fontWeight: "600", color: "#fff", marginTop: 2 },
   text: { color: COLORS.textMuted },
   sectionTitle: { color: COLORS.textLight, fontSize: 18, marginTop: 30, marginBottom: 10, fontWeight: "600" },
-  empty: { color: COLORS.textMuted, textAlign: "center", marginTop: 10 },
+  empty: { color: COLORS.textMuted, textAlign: "center", marginTop: 20, fontSize: 15 },
   reservationCard: { backgroundColor: "#fff", borderRadius: 12, padding: 14, marginBottom: 10 },
   resName: { fontSize: 16, fontWeight: "600" },
   resInfo: { fontSize: 14, color: "#555", marginTop: 4 },
@@ -272,23 +275,7 @@ const styles = StyleSheet.create({
   accept: { backgroundColor: COLORS.success, paddingVertical: 6, paddingHorizontal: 12, borderRadius: 20 },
   reject: { backgroundColor: COLORS.danger, paddingVertical: 6, paddingHorizontal: 12, borderRadius: 20 },
   actionText: { color: "#fff", fontWeight: "600" },
-  buttonRow: {
-    flexDirection: "row",
-    gap: 12,
-    marginTop: 16
-  },
-  edit: {
-    flex: 1,
-    backgroundColor: "#3B82F6",
-    paddingVertical: 10,
-    borderRadius: 10,
-    alignItems: "center"
-  },
-  delete: {
-    flex: 1,
-    backgroundColor: COLORS.danger,
-    paddingVertical: 10,
-    borderRadius: 10,
-    alignItems: "center"
-  }
+  buttonRow: { flexDirection: "row", gap: 12, marginTop: 16 },
+  editBtn: { flex: 1, backgroundColor: "#3B82F6", paddingVertical: 10, borderRadius: 10, alignItems: "center" },
+  deleteBtn: { flex: 1, backgroundColor: COLORS.danger, paddingVertical: 10, borderRadius: 10, alignItems: "center" },
 });

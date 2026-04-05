@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef, useCallback } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import {
   View,
   StyleSheet,
@@ -19,10 +19,13 @@ import { API_URL } from "../../src/services/api";
 import { COLORS } from "../../src/styles/colors";
 
 const GOOGLE_MAPS_KEY = process.env.EXPO_PUBLIC_GOOGLE_MAPS_KEY ?? "";
-const { width, height } = Dimensions.get("window");
+const { width } = Dimensions.get("window");
+
+// ── Throttle envoi position ──
+let lastLocationSent = 0;
 
 // ============================================================
-// DONNÉES STATIQUES - COORDONNÉES DES VILLES SÉNÉGALAISES
+// COORDONNÉES DES VILLES SÉNÉGALAISES
 // ============================================================
 const SENEGAL_CITIES: { [key: string]: { lat: number; lng: number; name: string } } = {
   "dakar": { lat: 14.6937, lng: -17.4441, name: "Dakar" },
@@ -49,103 +52,56 @@ const SENEGAL_CITIES: { [key: string]: { lat: number; lng: number; name: string 
   "rufisque": { lat: 14.7165, lng: -17.2717, name: "Rufisque" },
 };
 
-// Routes approximatives (prédéfinies pour les trajets courants)
-const PREDEFINED_ROUTES: { [key: string]: Array<{ lat: number; lng: number }> } = {
-  "dakar-thies": [
-    { lat: 14.6937, lng: -17.4441 },
-    { lat: 14.7230, lng: -17.3500 },
-    { lat: 14.7500, lng: -17.2500 },
-    { lat: 14.7700, lng: -17.1500 },
-    { lat: 14.7800, lng: -17.0500 },
-    { lat: 14.7910, lng: -16.9259 },
-  ],
-  "dakar-touba": [
-    { lat: 14.6937, lng: -17.4441 },
-    { lat: 14.7500, lng: -17.3000 },
-    { lat: 14.8000, lng: -17.1500 },
-    { lat: 14.8500, lng: -17.0000 },
-    { lat: 14.8575, lng: -15.8766 },
-  ],
-  "dakar-mbour": [
-    { lat: 14.6937, lng: -17.4441 },
-    { lat: 14.6500, lng: -17.4000 },
-    { lat: 14.5500, lng: -17.3000 },
-    { lat: 14.4500, lng: -17.2000 },
-    { lat: 14.4056, lng: -16.9647 },
-  ],
-  "dakar-saintlouis": [
-    { lat: 14.6937, lng: -17.4441 },
-    { lat: 14.8000, lng: -17.3000 },
-    { lat: 15.0000, lng: -17.0000 },
-    { lat: 15.5000, lng: -16.8000 },
-    { lat: 16.0283, lng: -16.5000 },
-  ],
-};
-
 // ============================================================
 // FONCTIONS UTILITAIRES
 // ============================================================
-
-// Calculer la distance entre deux points (formule de Haversine)
 function distanceBetween(lat1: number, lng1: number, lat2: number, lng2: number): number {
-  const R = 6371e3; // Rayon de la Terre en mètres
+  const R = 6371e3;
   const φ1 = (lat1 * Math.PI) / 180;
   const φ2 = (lat2 * Math.PI) / 180;
   const Δφ = ((lat2 - lat1) * Math.PI) / 180;
   const Δλ = ((lng2 - lng1) * Math.PI) / 180;
-  const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
-            Math.cos(φ1) * Math.cos(φ2) *
-            Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return R * c;
+  const a = Math.sin(Δφ / 2) ** 2 + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-// Obtenir les coordonnées d'une ville (fallback local uniquement)
 function getCityCoordinates(cityName: string): { lat: number; lng: number; name: string } | null {
   const normalized = cityName.toLowerCase().trim();
-  
-  // Recherche exacte
-  if (SENEGAL_CITIES[normalized]) {
-    return SENEGAL_CITIES[normalized];
-  }
-  
-  // Recherche partielle
+  if (SENEGAL_CITIES[normalized]) return SENEGAL_CITIES[normalized];
   for (const [key, value] of Object.entries(SENEGAL_CITIES)) {
-    if (normalized.includes(key) || key.includes(normalized)) {
-      return value;
-    }
-  }
-  
-  return null;
-}
-
-// Obtenir une route prédéfinie
-function getPredefinedRoute(from: string, to: string): Array<{ lat: number; lng: number }> | null {
-  const key1 = `${from.toLowerCase()}-${to.toLowerCase()}`;
-  const key2 = `${to.toLowerCase()}-${from.toLowerCase()}`;
-  
-  if (PREDEFINED_ROUTES[key1]) {
-    return PREDEFINED_ROUTES[key1];
-  }
-  if (PREDEFINED_ROUTES[key2]) {
-    return [...PREDEFINED_ROUTES[key2]].reverse();
+    if (normalized.includes(key) || key.includes(normalized)) return value;
   }
   return null;
 }
 
-// Générer une route simple entre deux points (ligne droite)
 function generateSimpleRoute(
   start: { lat: number; lng: number },
   end: { lat: number; lng: number }
-): Array<{ lat: number; lng: number }> {
+): Array<{ latitude: number; longitude: number }> {
   const points = [];
   const steps = 20;
   for (let i = 0; i <= steps; i++) {
     const t = i / steps;
     points.push({
-      lat: start.lat + (end.lat - start.lat) * t,
-      lng: start.lng + (end.lng - start.lng) * t,
+      latitude: start.lat + (end.lat - start.lat) * t,
+      longitude: start.lng + (end.lng - start.lng) * t,
     });
+  }
+  return points;
+}
+
+// ── Décoder polyline Google (si API disponible) ──
+function decodePolyline(encoded: string): Array<{ latitude: number; longitude: number }> {
+  const points: Array<{ latitude: number; longitude: number }> = [];
+  let index = 0, lat = 0, lng = 0;
+  while (index < encoded.length) {
+    let b, shift = 0, result = 0;
+    do { b = encoded.charCodeAt(index++) - 63; result |= (b & 0x1f) << shift; shift += 5; } while (b >= 0x20);
+    lat += result & 1 ? ~(result >> 1) : result >> 1;
+    shift = 0; result = 0;
+    do { b = encoded.charCodeAt(index++) - 63; result |= (b & 0x1f) << shift; shift += 5; } while (b >= 0x20);
+    lng += result & 1 ? ~(result >> 1) : result >> 1;
+    points.push({ latitude: lat / 1e5, longitude: lng / 1e5 });
   }
   return points;
 }
@@ -164,14 +120,14 @@ export default function DriverTripMapScreen() {
   const [driverId, setDriverId] = useState<number | null>(null);
   const [driverLocation, setDriverLocation] = useState<any>(null);
   const [destination, setDestination] = useState<any>(null);
-  const [routeCoords, setRouteCoords] = useState<any[]>([]);
+  const [routeCoords, setRouteCoords] = useState<Array<{ latitude: number; longitude: number }>>([]);
   const [remainingDistance, setRemainingDistance] = useState<number>(0);
   const [estimatedTime, setEstimatedTime] = useState<string>("");
   const [heading, setHeading] = useState(0);
   const [loading, setLoading] = useState(true);
   const [isNavigating, setIsNavigating] = useState(false);
 
-  // Lire driverId
+  // ── Lire driverId ──
   useEffect(() => {
     const load = async () => {
       const stored = await SecureStore.getItemAsync("driverId");
@@ -180,28 +136,23 @@ export default function DriverTripMapScreen() {
     load();
   }, []);
 
-  // Boussole
+  // ── Boussole ──
   useEffect(() => {
     let subscription: any;
-    
     const startMagnetometer = async () => {
       const { status } = await Magnetometer.requestPermissionsAsync();
       if (status === "granted") {
         subscription = Magnetometer.addListener(data => {
           let angle = Math.atan2(data.y, data.x) * (180 / Math.PI);
-          angle = angle >= 0 ? angle : angle + 360;
-          setHeading(angle);
+          setHeading(angle >= 0 ? angle : angle + 360);
         });
       }
     };
-    
     startMagnetometer();
-    return () => {
-      if (subscription) subscription.remove();
-    };
+    return () => { if (subscription) subscription.remove(); };
   }, []);
 
-  // GPS Chauffeur
+  // ── GPS Chauffeur ──
   useEffect(() => {
     const startWatching = async () => {
       const { status } = await Location.requestForegroundPermissionsAsync();
@@ -211,28 +162,35 @@ export default function DriverTripMapScreen() {
       }
 
       watchPositionRef.current = await Location.watchPositionAsync(
-        {
-          accuracy: Location.Accuracy.Balanced,
-          timeInterval: 5000,
-          distanceInterval: 10,
-        },
+        { accuracy: Location.Accuracy.Balanced, timeInterval: 5000, distanceInterval: 10 },
         async (location) => {
-          const pos = {
-            latitude: location.coords.latitude,
-            longitude: location.coords.longitude,
-          };
+          const pos = { latitude: location.coords.latitude, longitude: location.coords.longitude };
           setDriverLocation(pos);
 
-          // Mettre à jour la distance restante
+          // ── ✅ CORRECTION : Envoyer position au serveur avec throttle 10s + JWT ──
+          const now = Date.now();
+          if (driverId && now - lastLocationSent > 10000) {
+            lastLocationSent = now;
+            try {
+              const token = await SecureStore.getItemAsync("token");
+              await fetch(`${API_URL}/api/driver/update_location`, {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  Authorization: `Bearer ${token}`
+                },
+                body: JSON.stringify({ driver_id: driverId, lat: pos.latitude, lng: pos.longitude })
+              });
+            } catch (e) {
+              console.log("❌ LOCATION UPDATE ERROR", e);
+            }
+          }
+
+          // Mettre à jour distance restante
           if (destination) {
-            const dist = distanceBetween(
-              pos.latitude, pos.longitude,
-              destination.latitude, destination.longitude
-            );
+            const dist = distanceBetween(pos.latitude, pos.longitude, destination.latitude, destination.longitude);
             setRemainingDistance(dist);
-            
-            // Estimer le temps restant (vitesse moyenne 60 km/h)
-            const timeMinutes = (dist / 1000) / 60 * 60; // 60 km/h
+            const timeMinutes = (dist / 1000) / 60 * 60;
             if (timeMinutes < 60) {
               setEstimatedTime(`${Math.round(timeMinutes)} min`);
             } else {
@@ -242,54 +200,54 @@ export default function DriverTripMapScreen() {
             }
           }
 
-          // Centrer la carte sur le chauffeur
           if (mapRef.current && isNavigating) {
-            mapRef.current.animateCamera({
-              center: pos,
-              pitch: 45,
-              heading: heading,
-              zoom: 17,
-            });
+            mapRef.current.animateCamera({ center: pos, pitch: 45, heading, zoom: 17 });
           }
         }
       );
     };
 
     startWatching();
+    return () => { if (watchPositionRef.current) watchPositionRef.current.remove(); };
+  }, [destination, heading, isNavigating, driverId]);
 
-    return () => {
-      if (watchPositionRef.current) {
-        watchPositionRef.current.remove();
-      }
-    };
-  }, [destination, heading, isNavigating]);
-
-  // Initialiser la destination
+  // ── Initialiser destination ──
   useEffect(() => {
-    if (!trip?.destination) {
-      setLoading(false);
-      return;
-    }
+    if (!trip?.destination) { setLoading(false); return; }
 
-    const initializeDestination = () => {
-      // Chercher les coordonnées de la destination
+    const initializeDestination = async () => {
+      // 1. Essayer Google Geocoding si clé disponible
+      if (GOOGLE_MAPS_KEY) {
+        try {
+          const queries = [
+            `${trip.destination}, Sénégal`,
+            `${trip.destination}, Senegal`,
+            trip.destination,
+          ];
+          for (const query of queries) {
+            const url =
+              `https://maps.googleapis.com/maps/api/geocode/json?` +
+              `address=${encodeURIComponent(query)}&region=sn&language=fr&key=${GOOGLE_MAPS_KEY}`;
+            const res = await fetch(url);
+            const json = await res.json();
+            if (json.results?.length) {
+              const loc = json.results[0].geometry.location;
+              setDestination({ latitude: loc.lat, longitude: loc.lng, name: trip.destination });
+              setLoading(false);
+              return;
+            }
+          }
+        } catch (e) {
+          console.log("❌ Geocoding error, fallback local", e);
+        }
+      }
+
+      // 2. Fallback : coordonnées locales
       const cityCoords = getCityCoordinates(trip.destination);
-      
       if (cityCoords) {
-        console.log("📍 Destination trouvée:", cityCoords.name, cityCoords);
-        setDestination({
-          latitude: cityCoords.lat,
-          longitude: cityCoords.lng,
-          name: cityCoords.name,
-        });
+        setDestination({ latitude: cityCoords.lat, longitude: cityCoords.lng, name: cityCoords.name });
       } else {
-        // Fallback: Dakar
-        console.log("⚠️ Destination non trouvée, fallback sur Dakar");
-        setDestination({
-          latitude: 14.6937,
-          longitude: -17.4441,
-          name: "Dakar",
-        });
+        setDestination({ latitude: 14.6937, longitude: -17.4441, name: "Dakar" });
       }
       setLoading(false);
     };
@@ -297,101 +255,60 @@ export default function DriverTripMapScreen() {
     initializeDestination();
   }, [trip]);
 
-  // Calculer l'itinéraire
+  // ── Calculer itinéraire ──
   useEffect(() => {
     if (!driverLocation || !destination) return;
 
-    const calculateRoute = () => {
-      const from = trip?.depart || "dakar";
-      const to = trip?.destination || "dakar";
-      
-      // Essayer d'utiliser une route prédéfinie
-      let route = getPredefinedRoute(from, to);
-      
-      if (!route) {
-        // Générer une route simple
-        route = generateSimpleRoute(
-          { lat: driverLocation.latitude, lng: driverLocation.longitude },
-          { lat: destination.latitude, lng: destination.longitude }
-        );
-      } else {
-        // Ajuster le point de départ à la position actuelle
-        const firstPoint = route[0];
-        const distanceToStart = distanceBetween(
-          driverLocation.latitude, driverLocation.longitude,
-          firstPoint.lat, firstPoint.lng
-        );
-        
-        if (distanceToStart > 1000) {
-          // Si trop loin, recalculer avec position actuelle
-          route = generateSimpleRoute(
-            { lat: driverLocation.latitude, lng: driverLocation.longitude },
-            { lat: destination.latitude, lng: destination.longitude }
-          );
+    const calculateRoute = async () => {
+      // 1. Essayer Google Directions si clé disponible
+      if (GOOGLE_MAPS_KEY) {
+        try {
+          const url =
+            `https://maps.googleapis.com/maps/api/directions/json?` +
+            `origin=${driverLocation.latitude},${driverLocation.longitude}` +
+            `&destination=${destination.latitude},${destination.longitude}` +
+            `&mode=driving&key=${GOOGLE_MAPS_KEY}`;
+          const res = await fetch(url);
+          const json = await res.json();
+          if (json.routes?.length) {
+            const decoded = decodePolyline(json.routes[0].overview_polyline.points);
+            setRouteCoords(decoded);
+            setIsNavigating(true);
+            return;
+          }
+        } catch (e) {
+          console.log("❌ Directions error, fallback simple route", e);
         }
       }
-      
-      setRouteCoords(route);
-      
-      // Calculer la distance restante
-      const dist = distanceBetween(
-        driverLocation.latitude, driverLocation.longitude,
-        destination.latitude, destination.longitude
-      );
-      setRemainingDistance(dist);
-      
-      const timeMinutes = (dist / 1000) / 60 * 60;
-      if (timeMinutes < 60) {
-        setEstimatedTime(`${Math.round(timeMinutes)} min`);
-      } else {
-        const hours = Math.floor(timeMinutes / 60);
-        const minutes = Math.round(timeMinutes % 60);
-        setEstimatedTime(`${hours}h ${minutes}min`);
-      }
-    };
 
-    calculateRoute();
-    setIsNavigating(true);
-  }, [driverLocation, destination, trip]);
-
-  // Recalculer la route si déviation > 100m
-  useEffect(() => {
-    if (!driverLocation || routeCoords.length === 0) return;
-
-    let minDistance = Infinity;
-    routeCoords.forEach(point => {
-      const dist = distanceBetween(
-        driverLocation.latitude, driverLocation.longitude,
-        point.lat, point.lng
-      );
-      if (dist < minDistance) minDistance = dist;
-    });
-
-    if (minDistance > 100 && destination) {
-      // Recalculer la route
-      const newRoute = generateSimpleRoute(
+      // 2. Fallback : ligne droite
+      const route = generateSimpleRoute(
         { lat: driverLocation.latitude, lng: driverLocation.longitude },
         { lat: destination.latitude, lng: destination.longitude }
       );
-      setRouteCoords(newRoute);
-    }
-  }, [driverLocation, routeCoords, destination]);
+      setRouteCoords(route);
 
-  // Speech pour les instructions
+      const dist = distanceBetween(driverLocation.latitude, driverLocation.longitude, destination.latitude, destination.longitude);
+      setRemainingDistance(dist);
+      const timeMinutes = (dist / 1000) / 60 * 60;
+      setEstimatedTime(timeMinutes < 60 ? `${Math.round(timeMinutes)} min` : `${Math.floor(timeMinutes / 60)}h ${Math.round(timeMinutes % 60)}min`);
+      setIsNavigating(true);
+    };
+
+    calculateRoute();
+  }, [driverLocation, destination]);
+
+  // ── Instructions vocales ──
   useEffect(() => {
-    if (isNavigating && remainingDistance > 0) {
-      const distanceKm = (remainingDistance / 1000).toFixed(1);
-      if (remainingDistance < 100) {
-        Speech.speak("Vous êtes arrivé à destination", { language: "fr" });
-      } else if (remainingDistance < 500) {
-        Speech.speak("Dans 500 mètres, vous arrivez à destination", { language: "fr" });
-      } else if (Math.floor(remainingDistance / 1000) !== Math.floor((remainingDistance + 1000) / 1000)) {
-        Speech.speak(`Encore ${distanceKm} kilomètres`, { language: "fr" });
-      }
+    if (!isNavigating || remainingDistance <= 0) return;
+    if (remainingDistance < 100) {
+      Speech.speak("Vous êtes arrivé à destination", { language: "fr" });
+    } else if (remainingDistance < 500) {
+      Speech.speak("Dans 500 mètres, vous arrivez à destination", { language: "fr" });
     }
-  }, [remainingDistance, isNavigating]);
+  }, [Math.floor(remainingDistance / 500)]);
 
-  // Arriver à destination
+  // ── Arrivée à destination ──
   const handleArrived = () => {
     Alert.alert(
       "Arrivée à destination",
@@ -415,9 +332,7 @@ export default function DriverTripMapScreen() {
         <ActivityIndicator size="large" color={COLORS.primary} />
         <Text style={styles.loadingText}>Préparation de la navigation...</Text>
         {trip?.destination && (
-          <Text style={styles.destinationText}>
-            Vers : {trip.destination}
-          </Text>
+          <Text style={styles.destinationText}>Vers : {trip.destination}</Text>
         )}
       </View>
     );
@@ -428,12 +343,11 @@ export default function DriverTripMapScreen() {
 
   return (
     <View style={styles.container}>
-      {/* Bandeau d'information */}
+
+      {/* ── Bandeau info ── */}
       <View style={styles.infoBanner}>
         <View style={styles.infoRow}>
-          <Text style={styles.destinationName}>
-            🏁 {destination.name || trip?.destination}
-          </Text>
+          <Text style={styles.destinationName}>🏁 {destination.name || trip?.destination}</Text>
           {isNearDestination && (
             <TouchableOpacity style={styles.arrivedButton} onPress={handleArrived}>
               <Text style={styles.arrivedText}>✓ Arrivé</Text>
@@ -453,7 +367,7 @@ export default function DriverTripMapScreen() {
         </View>
       </View>
 
-      {/* Carte */}
+      {/* ── Carte ── */}
       <MapView
         ref={mapRef}
         style={styles.map}
@@ -466,7 +380,6 @@ export default function DriverTripMapScreen() {
         showsUserLocation={true}
         showsMyLocationButton={true}
       >
-        {/* Marqueur du chauffeur */}
         <Marker coordinate={driverLocation} rotation={heading} flat>
           <View style={styles.driverMarker}>
             <Text style={styles.driverIcon}>🚗</Text>
@@ -474,14 +387,12 @@ export default function DriverTripMapScreen() {
           </View>
         </Marker>
 
-        {/* Marqueur de destination */}
         <Marker coordinate={destination} pinColor="red">
           <View style={styles.destinationMarker}>
             <Text style={styles.destinationIcon}>🏁</Text>
           </View>
         </Marker>
 
-        {/* Ligne d'itinéraire */}
         {routeCoords.length > 0 && (
           <Polyline
             coordinates={routeCoords}
@@ -492,172 +403,70 @@ export default function DriverTripMapScreen() {
         )}
       </MapView>
 
-      {/* Bouton retour */}
+      {/* ── Bouton retour ── */}
       <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
         <Text style={styles.backButtonText}>← Retour</Text>
       </TouchableOpacity>
 
-      {/* Bouton recentrer */}
+      {/* ── Bouton recentrer ── */}
       <TouchableOpacity
         style={styles.recenterButton}
         onPress={() => {
           if (mapRef.current && driverLocation) {
-            mapRef.current.animateCamera({
-              center: driverLocation,
-              pitch: 45,
-              zoom: 17,
-            });
+            mapRef.current.animateCamera({ center: driverLocation, pitch: 45, zoom: 17 });
           }
         }}
       >
         <Text style={styles.recenterText}>📍</Text>
       </TouchableOpacity>
+
     </View>
   );
 }
 
-// ============================================================
-// STYLES
-// ============================================================
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#000",
-  },
-  map: {
-    flex: 1,
-  },
-  center: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: "#1a1a2e",
-  },
-  loadingText: {
-    marginTop: 10,
-    color: COLORS.textLight,
-    fontSize: 16,
-  },
-  destinationText: {
-    marginTop: 6,
-    color: "#999",
-    fontSize: 13,
-  },
+  container: { flex: 1, backgroundColor: "#000" },
+  map: { flex: 1 },
+  center: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#1a1a2e" },
+  loadingText: { marginTop: 10, color: COLORS.textLight, fontSize: 16 },
+  destinationText: { marginTop: 6, color: "#999", fontSize: 13 },
   infoBanner: {
-    position: "absolute",
-    top: 50,
-    left: 16,
-    right: 16,
-    backgroundColor: "#fff",
-    borderRadius: 16,
-    padding: 14,
-    zIndex: 10,
-    elevation: 5,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
+    position: "absolute", top: 50, left: 16, right: 16,
+    backgroundColor: "#fff", borderRadius: 16, padding: 14,
+    zIndex: 10, elevation: 5,
+    shadowColor: "#000", shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25, shadowRadius: 4,
   },
-  infoRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 10,
-  },
-  destinationName: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: "#1F2937",
-    flex: 1,
-  },
-  arrivedButton: {
-    backgroundColor: COLORS.success,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
-  },
-  arrivedText: {
-    color: "#fff",
-    fontWeight: "600",
-    fontSize: 12,
-  },
-  statsRow: {
-    flexDirection: "row",
-    justifyContent: "space-around",
-    borderTopWidth: 1,
-    borderTopColor: "#E5E7EB",
-    paddingTop: 10,
-  },
-  statItem: {
-    alignItems: "center",
-    flex: 1,
-  },
-  statLabel: {
-    fontSize: 11,
-    color: "#6B7280",
-  },
-  statValue: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: "#2563EB",
-    marginTop: 2,
-  },
-  statDivider: {
-    width: 1,
-    height: 30,
-    backgroundColor: "#E5E7EB",
-  },
-  driverMarker: {
-    alignItems: "center",
-  },
-  driverIcon: {
-    fontSize: 32,
-  },
+  infoRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 10 },
+  destinationName: { fontSize: 16, fontWeight: "700", color: "#1F2937", flex: 1 },
+  arrivedButton: { backgroundColor: COLORS.success, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20 },
+  arrivedText: { color: "#fff", fontWeight: "600", fontSize: 12 },
+  statsRow: { flexDirection: "row", justifyContent: "space-around", borderTopWidth: 1, borderTopColor: "#E5E7EB", paddingTop: 10 },
+  statItem: { alignItems: "center", flex: 1 },
+  statLabel: { fontSize: 11, color: "#6B7280" },
+  statValue: { fontSize: 16, fontWeight: "700", color: "#2563EB", marginTop: 2 },
+  statDivider: { width: 1, height: 30, backgroundColor: "#E5E7EB" },
+  driverMarker: { alignItems: "center" },
+  driverIcon: { fontSize: 32 },
   directionArrow: {
-    width: 0,
-    height: 0,
-    borderLeftWidth: 6,
-    borderRightWidth: 6,
-    borderTopWidth: 10,
-    borderLeftColor: "transparent",
-    borderRightColor: "transparent",
-    borderTopColor: "#2563EB",
-    marginTop: -5,
+    width: 0, height: 0,
+    borderLeftWidth: 6, borderRightWidth: 6, borderTopWidth: 10,
+    borderLeftColor: "transparent", borderRightColor: "transparent",
+    borderTopColor: "#2563EB", marginTop: -5,
   },
-  destinationMarker: {
-    alignItems: "center",
-  },
-  destinationIcon: {
-    fontSize: 28,
-  },
+  destinationMarker: { alignItems: "center" },
+  destinationIcon: { fontSize: 28 },
   backButton: {
-    position: "absolute",
-    top: 120,
-    left: 16,
+    position: "absolute", top: 120, left: 16,
     backgroundColor: "rgba(0,0,0,0.7)",
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 20,
-    zIndex: 10,
+    paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20, zIndex: 10,
   },
-  backButtonText: {
-    color: "#fff",
-    fontSize: 14,
-    fontWeight: "600",
-  },
+  backButtonText: { color: "#fff", fontSize: 14, fontWeight: "600" },
   recenterButton: {
-    position: "absolute",
-    bottom: 100,
-    right: 16,
+    position: "absolute", bottom: 100, right: 16,
     backgroundColor: "rgba(0,0,0,0.7)",
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    justifyContent: "center",
-    alignItems: "center",
-    zIndex: 10,
+    width: 44, height: 44, borderRadius: 22,
+    justifyContent: "center", alignItems: "center", zIndex: 10,
   },
-  recenterText: {
-    fontSize: 24,
-  },
+  recenterText: { fontSize: 24 },
 });
