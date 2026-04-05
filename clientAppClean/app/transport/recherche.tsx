@@ -13,9 +13,10 @@ import { Ionicons } from "@expo/vector-icons";
 import * as Location from "expo-location";
 import {
   API_URL,
-  geocodeAddress,
   reverseGeocode,
+  searchArrets,
   autocompleteAddress,
+  geocodeAddress,
   getPlaceDetails,
 } from "../../lib/api";
 
@@ -39,10 +40,10 @@ export default function RechercheTransport() {
   const departInputRef = useRef(null);
   const destInputRef = useRef(null);
 
-  // 🔒 Flags pour bloquer l'autocomplétion lors d'une sélection programmatique
   const isSelectingDepart = useRef(false);
   const isSelectingDest = useRef(false);
 
+  // Récupérer position actuelle au démarrage
   useEffect(() => {
     (async () => {
       const { status } = await Location.requestForegroundPermissionsAsync();
@@ -53,92 +54,133 @@ export default function RechercheTransport() {
     })();
   }, []);
 
-  // Autocomplétion départ
+  // Autocomplétion départ — BDD en priorité, Google Places en fallback
   useEffect(() => {
     if (departTimeout.current) clearTimeout(departTimeout.current);
-
-    // 🔒 Si sélection programmatique, on ignore et on reset le flag
     if (isSelectingDepart.current) {
       isSelectingDepart.current = false;
       return;
     }
-
     if (departSaisi.trim().length < 2) {
       setSuggestionsDepart([]);
       setShowDepartSuggestions(false);
       return;
     }
     departTimeout.current = setTimeout(async () => {
-      const suggestions = await autocompleteAddress(departSaisi, positionActuelle);
-      setSuggestionsDepart(suggestions);
+      const arrets = await searchArrets(departSaisi);
+      if (arrets.length > 0) {
+        setSuggestionsDepart(arrets.map(a => ({
+          id: a.id,
+          nom: a.nom,
+          latitude: a.latitude,
+          longitude: a.longitude,
+          type: "arret",
+        })));
+      } else {
+        // Fallback Google Places
+        const places = await autocompleteAddress(departSaisi, positionActuelle);
+        setSuggestionsDepart(places.map(p => ({
+          id: p.placeId,
+          nom: p.description,
+          latitude: null,
+          longitude: null,
+          type: "place",
+          placeId: p.placeId,
+        })));
+      }
       setShowDepartSuggestions(true);
-    }, 500);
-    return () => {
-      if (departTimeout.current) clearTimeout(departTimeout.current);
-    };
+    }, 300);
+    return () => { if (departTimeout.current) clearTimeout(departTimeout.current); };
   }, [departSaisi, positionActuelle]);
 
-  // Autocomplétion destination
+  // Autocomplétion destination — BDD en priorité, Google Places en fallback
   useEffect(() => {
     if (destTimeout.current) clearTimeout(destTimeout.current);
-
-    // 🔒 Si sélection programmatique, on ignore et on reset le flag
     if (isSelectingDest.current) {
       isSelectingDest.current = false;
       return;
     }
-
     if (destinationSaisie.trim().length < 2) {
       setSuggestionsDestination([]);
       setShowDestSuggestions(false);
       return;
     }
     destTimeout.current = setTimeout(async () => {
-      const suggestions = await autocompleteAddress(destinationSaisie, positionActuelle);
-      setSuggestionsDestination(suggestions);
+      const arrets = await searchArrets(destinationSaisie);
+      if (arrets.length > 0) {
+        setSuggestionsDestination(arrets.map(a => ({
+          id: a.id,
+          nom: a.nom,
+          latitude: a.latitude,
+          longitude: a.longitude,
+          type: "arret",
+        })));
+      } else {
+        // Fallback Google Places
+        const places = await autocompleteAddress(destinationSaisie, positionActuelle);
+        setSuggestionsDestination(places.map(p => ({
+          id: p.placeId,
+          nom: p.description,
+          latitude: null,
+          longitude: null,
+          type: "place",
+          placeId: p.placeId,
+        })));
+      }
       setShowDestSuggestions(true);
-    }, 500);
-    return () => {
-      if (destTimeout.current) clearTimeout(destTimeout.current);
-    };
+    }, 300);
+    return () => { if (destTimeout.current) clearTimeout(destTimeout.current); };
   }, [destinationSaisie, positionActuelle]);
 
-  const selectSuggestion = useCallback(async (type, suggestion) => {
+  // Sélection d'un item (arrêt BDD ou lieu Google)
+  const selectItem = useCallback(async (type, item) => {
     if (type === "depart") {
-      isSelectingDepart.current = true; // 🔒 Bloquer avant setDepartSaisi
-      setShowDepartSuggestions(false);
+      isSelectingDepart.current = true;
+      setDepartSaisi(item.nom);
       setSuggestionsDepart([]);
-      setDepartSaisi(suggestion.description);
-      setGeocodingDepart(true);
-      const details = await getPlaceDetails(suggestion.placeId);
-      if (details) {
-        setCoordsDepart({ lat: details.lat, lon: details.lon });
+      setShowDepartSuggestions(false);
+
+      if (item.type === "arret") {
+        setCoordsDepart({ lat: item.latitude, lon: item.longitude });
       } else {
-        const result = await geocodeAddress(suggestion.description);
-        if (result) setCoordsDepart({ lat: result.lat, lon: result.lon });
-        else Alert.alert("Erreur", "Impossible de localiser ce lieu.");
+        setGeocodingDepart(true);
+        const details = await getPlaceDetails(item.placeId);
+        if (details) {
+          setCoordsDepart({ lat: details.lat, lon: details.lon });
+        } else {
+          const result = await geocodeAddress(item.nom);
+          if (result) setCoordsDepart({ lat: result.lat, lon: result.lon });
+          else Alert.alert("Erreur", "Impossible de localiser ce lieu.");
+        }
+        setGeocodingDepart(false);
       }
-      setGeocodingDepart(false);
       departInputRef.current?.blur();
+
     } else {
-      isSelectingDest.current = true; // 🔒 Bloquer avant setDestinationSaisie
-      setShowDestSuggestions(false);
+      isSelectingDest.current = true;
+      setDestinationSaisie(item.nom);
       setSuggestionsDestination([]);
-      setDestinationSaisie(suggestion.description);
-      setGeocodingArrivee(true);
-      const details = await getPlaceDetails(suggestion.placeId);
-      if (details) {
-        setCoordsArrivee({ lat: details.lat, lon: details.lon });
+      setShowDestSuggestions(false);
+
+      if (item.type === "arret") {
+        setCoordsArrivee({ lat: item.latitude, lon: item.longitude });
       } else {
-        const result = await geocodeAddress(suggestion.description);
-        if (result) setCoordsArrivee({ lat: result.lat, lon: result.lon });
-        else Alert.alert("Erreur", "Impossible de localiser ce lieu.");
+        setGeocodingArrivee(true);
+        const details = await getPlaceDetails(item.placeId);
+        if (details) {
+          setCoordsArrivee({ lat: details.lat, lon: details.lon });
+        } else {
+          const result = await geocodeAddress(item.nom);
+          if (result) setCoordsArrivee({ lat: result.lat, lon: result.lon });
+          else Alert.alert("Erreur", "Impossible de localiser ce lieu.");
+        }
+        setGeocodingArrivee(false);
       }
-      setGeocodingArrivee(false);
       destInputRef.current?.blur();
     }
   }, []);
 
+  // Utiliser la position GPS actuelle comme départ
   const utiliserPositionActuelle = useCallback(async () => {
     const { status } = await Location.requestForegroundPermissionsAsync();
     if (status !== "granted") {
@@ -152,12 +194,13 @@ export default function RechercheTransport() {
     setGeocodingDepart(true);
     const adresse = await reverseGeocode(lat, lon);
     setGeocodingDepart(false);
-    isSelectingDepart.current = true; // 🔒 Bloquer avant setDepartSaisi
-    setShowDepartSuggestions(false);
+    isSelectingDepart.current = true;
     setSuggestionsDepart([]);
+    setShowDepartSuggestions(false);
     setDepartSaisi(adresse || `${lat.toFixed(4)}, ${lon.toFixed(4)}`);
   }, []);
 
+  // Lancer la recherche d'itinéraire
   const handleRecherche = useCallback(async () => {
     if (!coordsDepart || !coordsArrivee) {
       Alert.alert("Erreur", "Choisissez un départ et une destination valides.");
@@ -174,6 +217,9 @@ export default function RechercheTransport() {
       const response = await fetch(`${API_URL}/api/transport/itineraires?${params}`);
       const data = await response.json();
       setResultats(data.itineraires || []);
+      if ((data.itineraires || []).length === 0) {
+        Alert.alert("Aucun résultat", data.message || "Aucun itinéraire trouvé entre ces deux points.");
+      }
     } catch (err) {
       Alert.alert("Erreur", "Impossible de trouver un itinéraire.");
     } finally {
@@ -181,12 +227,26 @@ export default function RechercheTransport() {
     }
   }, [coordsDepart, coordsArrivee]);
 
+  // Rendu des suggestions
   const renderSuggestions = (suggestions, onSelect) => (
-    <ScrollView style={styles.suggestionsList} nestedScrollEnabled>
+    <ScrollView style={styles.suggestionsList} nestedScrollEnabled keyboardShouldPersistTaps="handled">
       {suggestions.map((item) => (
-        <TouchableOpacity key={item.placeId} style={styles.suggestionItem} onPress={() => onSelect(item)}>
-          <Ionicons name="location-outline" size={16} color="#4DA3FF" />
-          <Text style={styles.suggestionText}>{item.description}</Text>
+        <TouchableOpacity
+          key={item.id}
+          style={styles.suggestionItem}
+          onPress={() => onSelect(item)}
+        >
+          <Ionicons
+            name={item.type === "arret" ? "bus-outline" : "location-outline"}
+            size={16}
+            color={item.type === "arret" ? "#4DA3FF" : "#9AA4BF"}
+          />
+          <View style={styles.suggestionTextContainer}>
+            <Text style={styles.suggestionText}>{item.nom}</Text>
+            {item.type === "place" && (
+              <Text style={styles.suggestionSubText}>Lieu à proximité</Text>
+            )}
+          </View>
         </TouchableOpacity>
       ))}
     </ScrollView>
@@ -194,18 +254,19 @@ export default function RechercheTransport() {
 
   return (
     <ScrollView style={styles.container} keyboardShouldPersistTaps="handled">
-      <Text style={styles.title}>Rechercher un itinéraire (Urbain)</Text>
+      <Text style={styles.title}>Rechercher un itinéraire</Text>
 
+      {/* DÉPART */}
       <View style={styles.inputGroup}>
         <Text style={styles.label}>Départ</Text>
         <TextInput
           ref={departInputRef}
           style={styles.input}
-          placeholder="Ex: Ouakam, Cité Avion"
+          placeholder="Arrêt ou lieu (ex: Ouakam, Hôpital...)"
           placeholderTextColor="#9AA4BF"
           value={departSaisi}
           onChangeText={(text) => {
-            setCoordsDepart(null); // Reset coords si l'utilisateur retape
+            setCoordsDepart(null);
             setDepartSaisi(text);
           }}
           onFocus={() => {
@@ -214,7 +275,7 @@ export default function RechercheTransport() {
         />
         {showDepartSuggestions && suggestionsDepart.length > 0 && (
           <View style={styles.suggestionsContainer}>
-            {renderSuggestions(suggestionsDepart, (item) => selectSuggestion("depart", item))}
+            {renderSuggestions(suggestionsDepart, (item) => selectItem("depart", item))}
           </View>
         )}
         <TouchableOpacity style={styles.locationBtn} onPress={utiliserPositionActuelle}>
@@ -225,16 +286,17 @@ export default function RechercheTransport() {
         {coordsDepart && !geocodingDepart && <Text style={styles.successText}>✓ Lieu reconnu</Text>}
       </View>
 
+      {/* DESTINATION */}
       <View style={styles.inputGroup}>
         <Text style={styles.label}>Destination</Text>
         <TextInput
           ref={destInputRef}
           style={styles.input}
-          placeholder="Ex: Place de l'Indépendance"
+          placeholder="Arrêt ou lieu (ex: UCAD, Place Indépendance...)"
           placeholderTextColor="#9AA4BF"
           value={destinationSaisie}
           onChangeText={(text) => {
-            setCoordsArrivee(null); // Reset coords si l'utilisateur retape
+            setCoordsArrivee(null);
             setDestinationSaisie(text);
           }}
           onFocus={() => {
@@ -243,30 +305,37 @@ export default function RechercheTransport() {
         />
         {showDestSuggestions && suggestionsDestination.length > 0 && (
           <View style={styles.suggestionsContainer}>
-            {renderSuggestions(suggestionsDestination, (item) => selectSuggestion("destination", item))}
+            {renderSuggestions(suggestionsDestination, (item) => selectItem("destination", item))}
           </View>
         )}
         {geocodingArrivee && <ActivityIndicator size="small" color="#4DA3FF" style={{ marginTop: 8 }} />}
         {coordsArrivee && !geocodingArrivee && <Text style={styles.successText}>✓ Lieu reconnu</Text>}
       </View>
 
+      {/* BOUTON RECHERCHE */}
       <TouchableOpacity
         style={[styles.searchBtn, (!coordsDepart || !coordsArrivee || loading) && styles.disabled]}
         onPress={handleRecherche}
         disabled={!coordsDepart || !coordsArrivee || loading}
       >
-        {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>Trouver un itinéraire</Text>}
+        {loading
+          ? <ActivityIndicator color="#fff" />
+          : <Text style={styles.btnText}>Trouver un itinéraire</Text>
+        }
       </TouchableOpacity>
 
+      {/* RÉSULTATS */}
       {resultats.length > 0 && (
         <View style={styles.results}>
           <Text style={styles.sectionTitle}>Itinéraires proposés</Text>
           {resultats.map((item, idx) => (
             <View key={idx} style={styles.card}>
-              <Text style={styles.ligne}>Ligne {item.ligne.numero} - {item.ligne.nom}</Text>
-              <Text>De {item.depart.nom} à {item.arrivee.nom}</Text>
-              <Text>Durée estimée : {item.duree_estimee} min</Text>
-              <Text>Prochains départs : {item.horaires.join(", ")}</Text>
+              <Text style={styles.ligne}>Ligne {item.ligne.numero} — {item.ligne.nom}</Text>
+              <Text style={styles.cardText}>De {item.depart.nom} à {item.arrivee.nom}</Text>
+              <Text style={styles.cardText}>Durée estimée : {item.duree_estimee} min</Text>
+              {item.horaires.length > 0 && (
+                <Text style={styles.cardText}>Prochains départs : {item.horaires.join(", ")}</Text>
+              )}
             </View>
           ))}
         </View>
@@ -290,9 +359,11 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     zIndex: 100,
     elevation: 5,
-    maxHeight: 200,
+    maxHeight: 220,
+    borderWidth: 1,
+    borderColor: "#2E3E6E",
   },
-  suggestionsList: { maxHeight: 200 },
+  suggestionsList: { maxHeight: 220 },
   suggestionItem: {
     flexDirection: "row",
     alignItems: "center",
@@ -300,15 +371,18 @@ const styles = StyleSheet.create({
     borderBottomWidth: 0.5,
     borderBottomColor: "#3A4A6E",
   },
-  suggestionText: { color: "#fff", marginLeft: 8, fontSize: 14 },
+  suggestionTextContainer: { marginLeft: 8, flex: 1 },
+  suggestionText: { color: "#fff", fontSize: 14 },
+  suggestionSubText: { color: "#9AA4BF", fontSize: 11, marginTop: 2 },
   locationBtn: { flexDirection: "row", alignItems: "center", marginTop: 8, gap: 8, padding: 8 },
   locationBtnText: { color: "#4DA3FF" },
   successText: { color: "#4ade80", fontSize: 12, marginTop: 4 },
   searchBtn: { backgroundColor: "#2563EB", padding: 16, borderRadius: 12, alignItems: "center", marginTop: 8 },
   disabled: { opacity: 0.6 },
   btnText: { color: "#fff", fontWeight: "600" },
-  results: { marginTop: 20 },
+  results: { marginTop: 20, paddingBottom: 40 },
   sectionTitle: { color: "#fff", fontSize: 18, fontWeight: "600", marginBottom: 12 },
   card: { backgroundColor: "#1F2A52", borderRadius: 12, padding: 16, marginBottom: 12 },
-  ligne: { color: "#fff", fontSize: 16, fontWeight: "bold" },
+  ligne: { color: "#fff", fontSize: 16, fontWeight: "bold", marginBottom: 6 },
+  cardText: { color: "#9AA4BF", marginTop: 2 },
 });

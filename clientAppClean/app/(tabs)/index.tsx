@@ -141,12 +141,6 @@ export default function HomeScreen() {
   </TouchableOpacity>
 </View>
 
-<TouchableOpacity
-  style={[styles.actionBtn, { backgroundColor: "#FF9800" }]}
-  onPress={() => router.push("/test-autocomplete")}
->
-  <Text style={styles.btnText}>Test Autocomplete</Text>
-</TouchableOpacity>
 
       {/* FAVORIS */}
       <View style={styles.card}>
