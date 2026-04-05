@@ -193,7 +193,6 @@ export default function DriverTripDetailScreen() {
       />
 
 
-      // Ajoutez ceci après le bouton "Voir l'itinéraire sur la carte"
       <PrimaryButton
         title="Voir les réservations"
         style={{ marginTop: 10 }}

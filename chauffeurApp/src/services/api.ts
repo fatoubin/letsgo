@@ -119,6 +119,7 @@ export async function updateTrip(payload: {
   destination: string;
   heure: string;
   seats: number;
+  price: number;
 }) {
   return fetchWithAuth("/api/trips/update", {
     method: "POST",
