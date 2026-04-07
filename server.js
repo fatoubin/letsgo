@@ -463,8 +463,7 @@ app.get("/api/trips/reservations", authenticateDriver, (req, res) => {
       res.json(results);
     }
   );
-});
->>>>>>> 4b525d8 (Ajout carte bus-map, correction gestion token 401, amélioration recherche)
+}); 4b525d8 (Ajout carte bus-map, correction gestion token 401, amélioration recherche)
 
 // ── Stats chauffeur ──
 app.get("/api/driver/stats", authenticateDriver, (req, res) => {
@@ -517,7 +516,7 @@ app.post("/api/trips/reservation_action", authenticateDriver, (req, res) => {
   const { reservation_id, status } = req.body;
   if (!reservation_id || !status) return res.status(400).json({ message: "Champs manquants" });
 
-<<<<<<< HEAD
+
   if (!reservation_id || !status) {
     return res.status(400).json({ message: "Champs manquants" });
   }
@@ -574,11 +573,10 @@ app.post("/api/trips/reservation_action", authenticateDriver, (req, res) => {
         );
 
       }
-=======
   db.query("SELECT * FROM demandes WHERE id = ?", [reservation_id], (err, results) => {
     if (err) return res.status(500).json({ message: "Erreur serveur" });
     if (results.length === 0) return res.status(404).json({ message: "Demande introuvable" });
->>>>>>> 4b525d8 (Ajout carte bus-map, correction gestion token 401, amélioration recherche)
+ 4b525d8 (Ajout carte bus-map, correction gestion token 401, amélioration recherche)
 
     const demande = results[0];
     if (status === "accepted") {
@@ -599,7 +597,7 @@ app.post("/api/trips/reservation_action", authenticateDriver, (req, res) => {
   });
 });
 
-<<<<<<< HEAD
+ HEAD
 
 // Récupérer les réservations d'un trajet spécifique
 app.get("/api/trips/reservations", authenticateDriver, (req, res) => {
@@ -630,7 +628,7 @@ app.get("/api/trips/reservations", authenticateDriver, (req, res) => {
     }
     res.json(results);
   });
-=======
+
 // ── Récupérer les réservations par trajet ──
 app.get("/api/trips/reservations", authenticateDriver, (req, res) => {
   const { trip_id } = req.query;
@@ -646,7 +644,7 @@ app.get("/api/trips/reservations", authenticateDriver, (req, res) => {
       res.json(results);
     }
   );
->>>>>>> 4b525d8 (Ajout carte bus-map, correction gestion token 401, amélioration recherche)
+4b525d8 (Ajout carte bus-map, correction gestion token 401, amélioration recherche)
 });
 
 // ── Modifier un trajet ──
