@@ -24,9 +24,6 @@ const limiter = rateLimit({
 
 app.use(limiter);
 
-// ================= TOKENS (client - inchangé) =================
-const tokens = {};
-
 // ================= CONNEXION MYSQL =================
 const db = mysql.createPool({
   host: process.env.DB_HOST,
@@ -40,17 +37,30 @@ const db = mysql.createPool({
   ssl: { rejectUnauthorized: false }
 });
 
-// ================= AUTH MIDDLEWARE CLIENT (inchangé) =================
+// ================= NETTOYAGE DES TOKENS EXPIRÉS (toutes les heures) =================
+setInterval(() => {
+  db.query("DELETE FROM tokens WHERE expires_at < NOW()", (err) => {
+    if (err) console.error("❌ Erreur nettoyage tokens:", err);
+  });
+}, 60 * 60 * 1000);
+
+// ================= AUTH MIDDLEWARE CLIENT (avec base de données) =================
 function authenticate(req, res, next) {
   const auth = req.headers.authorization;
   if (!auth) return res.status(401).json({ message: "Token manquant" });
 
   const token = auth.replace("Bearer ", "");
-  const userId = tokens[token];
-  if (!userId) return res.status(401).json({ message: "Token invalide" });
-
-  req.user = { id: userId };
-  next();
+  db.query(
+    "SELECT user_id FROM tokens WHERE token = ? AND expires_at > NOW()",
+    [token],
+    (err, results) => {
+      if (err || results.length === 0) {
+        return res.status(401).json({ message: "Token invalide ou expiré" });
+      }
+      req.user = { id: results[0].user_id };
+      next();
+    }
+  );
 }
 
 // ================= AUTH MIDDLEWARE CHAUFFEUR (JWT) =================
@@ -69,9 +79,10 @@ function authenticateDriver(req, res, next) {
 }
 
 // =======================================================
-// ============= ROUTES CLIENT (inchangées) ==============
+// ============= ROUTES CLIENT ===========================
 // =======================================================
 
+// ── Inscription ──
 app.post("/api/auth/register", async (req, res) => {
   const { nom, prenom, email, telephone, residence, password } = req.body;
   if (!nom || !prenom || !email || !password)
@@ -97,6 +108,7 @@ app.post("/api/auth/register", async (req, res) => {
   }
 });
 
+// ── Connexion (avec stockage token en base) ──
 app.post("/api/auth/login", (req, res) => {
   const { email, password } = req.body;
   if (!email || !password)
@@ -111,7 +123,16 @@ app.post("/api/auth/login", (req, res) => {
     if (!match) return res.status(401).json({ message: "Email ou mot de passe incorrect" });
 
     const token = "TOKEN_" + Date.now() + "_" + Math.random().toString(36).substring(2);
-    tokens[token] = user.id;
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 jours
+
+    // Stocker le token en base
+    db.query(
+      "INSERT INTO tokens (token, user_id, expires_at) VALUES (?, ?, ?)",
+      [token, user.id, expiresAt],
+      (err) => {
+        if (err) console.error("❌ Erreur insertion token:", err);
+      }
+    );
 
     res.json({
       token,
@@ -119,7 +140,18 @@ app.post("/api/auth/login", (req, res) => {
     });
   });
 });
-// Récupérer tous les trajets disponibles (public)
+
+// ── Déconnexion (supprime le token) ──
+app.post("/api/auth/logout", authenticate, (req, res) => {
+  const auth = req.headers.authorization;
+  const token = auth.replace("Bearer ", "");
+  db.query("DELETE FROM tokens WHERE token = ?", [token], (err) => {
+    if (err) return res.status(500).json({ message: "Erreur déconnexion" });
+    res.json({ message: "Déconnecté" });
+  });
+});
+
+// ── Récupérer tous les trajets disponibles (public) ──
 app.get("/api/client/trajets", (req, res) => {
   db.query("SELECT * FROM trajets ORDER BY heure DESC", (err, results) => {
     if (err) {
@@ -129,7 +161,8 @@ app.get("/api/client/trajets", (req, res) => {
     res.json(results);
   });
 });
-// Détail d’un trajet (public)
+
+// ── Détail d’un trajet (public) ──
 app.get("/api/client/trajets/:id", (req, res) => {
   const trajetId = req.params.id;
   db.query("SELECT id, depart, destination, heure, places, prix FROM trajets WHERE id = ?", [trajetId], (err, results) => {
@@ -139,6 +172,7 @@ app.get("/api/client/trajets/:id", (req, res) => {
   });
 });
 
+// ── Créer un trajet (client) ──
 app.post("/api/client/trajets", authenticate, (req, res) => {
   const { depart, destination, date_depart, heure_depart, places, prix } = req.body;
   if (!destination || !places || !date_depart || !heure_depart || !prix)
@@ -155,6 +189,7 @@ app.post("/api/client/trajets", authenticate, (req, res) => {
   );
 });
 
+// ── Créer une demande (réservation) ──
 app.post("/api/client/demandes", authenticate, (req, res) => {
   const { depart, destination, date_depart, heure_depart, places, prix, trip_id } = req.body;
   if (!depart || !destination || !date_depart || !heure_depart || !places || !prix)
@@ -170,6 +205,7 @@ app.post("/api/client/demandes", authenticate, (req, res) => {
   );
 });
 
+// ── Récupérer ses propres demandes ──
 app.get("/api/client/mes-demandes", authenticate, (req, res) => {
   db.query(
     "SELECT * FROM demandes WHERE user_id = ? ORDER BY created_at DESC",
@@ -181,6 +217,7 @@ app.get("/api/client/mes-demandes", authenticate, (req, res) => {
   );
 });
 
+// ── Modifier une demande ──
 app.put("/api/client/demandes/:id", authenticate, (req, res) => {
   const demandeId = req.params.id;
   const { depart, destination, date_depart, heure_depart, places } = req.body;
@@ -198,6 +235,7 @@ app.put("/api/client/demandes/:id", authenticate, (req, res) => {
   );
 });
 
+// ── Supprimer une demande ──
 app.delete("/api/client/demandes/:id", authenticate, (req, res) => {
   const demandeId = req.params.id;
   db.query(
@@ -212,10 +250,10 @@ app.delete("/api/client/demandes/:id", authenticate, (req, res) => {
 });
 
 // =======================================================
-// ============= ROUTES CHAUFFEUR (nouvelles) ============
+// ============= ROUTES CHAUFFEUR ========================
 // =======================================================
 
-// ── Register chauffeur (user + driver en une seule requête) ──
+// ── Register chauffeur ──
 app.post("/api/driver/register", async (req, res) => {
   const { nom, prenom, email, telephone, residence, password,
           vehicle_type, license_number, vehicle_plate, seats } = req.body;
@@ -252,7 +290,7 @@ app.post("/api/driver/register", async (req, res) => {
   }
 });
 
-// ── Login chauffeur (retourne JWT) ──
+// ── Login chauffeur ──
 app.post("/api/driver/login", (req, res) => {
   const { email, password } = req.body;
   
@@ -260,7 +298,6 @@ app.post("/api/driver/login", (req, res) => {
     return res.status(400).json({ message: "Email/téléphone et mot de passe requis" });
   }
 
-  // Vérifier si l'identifiant est un email ou un téléphone
   const isEmail = email.includes("@") && email.includes(".");
   const isPhone = /^(\+221)?[0-9]{9,12}$/.test(email) || /^[0-9]{9,12}$/.test(email);
   
@@ -274,7 +311,6 @@ app.post("/api/driver/login", (req, res) => {
              WHERE u.email = ?`;
     params = [email];
   } else if (isPhone) {
-    // Nettoyer le numéro de téléphone
     let cleanPhone = email.replace(/[^0-9]/g, "");
     if (cleanPhone.startsWith("221")) {
       cleanPhone = cleanPhone.substring(3);
@@ -288,44 +324,19 @@ app.post("/api/driver/login", (req, res) => {
     return res.status(400).json({ message: "Format d'identifiant invalide" });
   }
 
-  console.log(`🔐 Tentative login chauffeur avec: ${email} (${isEmail ? "email" : "téléphone"})`);
-
   db.query(query, params, async (err, results) => {
-    if (err) {
-      console.error("❌ Erreur DB:", err);
-      return res.status(500).json({ message: "Erreur serveur" });
-    }
-    
-    if (results.length === 0) {
-      console.log("❌ Identifiant non trouvé:", email);
-      return res.status(401).json({ message: "Email/téléphone ou mot de passe incorrect" });
-    }
+    if (err) return res.status(500).json({ message: "Erreur serveur" });
+    if (results.length === 0) return res.status(401).json({ message: "Email/téléphone ou mot de passe incorrect" });
 
     const user = results[0];
     const match = await bcrypt.compare(password, user.password);
-    
-    if (!match) {
-      console.log("❌ Mot de passe incorrect pour:", email);
-      return res.status(401).json({ message: "Email/téléphone ou mot de passe incorrect" });
-    }
-
-    if (!process.env.JWT_SECRET) {
-      console.error("❌ JWT_SECRET non défini dans .env");
-      return res.status(500).json({ message: "Erreur configuration serveur" });
-    }
+    if (!match) return res.status(401).json({ message: "Email/téléphone ou mot de passe incorrect" });
 
     const token = jwt.sign(
-      { 
-        id: user.id, 
-        email: user.email, 
-        driverId: user.driver_id 
-      },
+      { id: user.id, email: user.email, driverId: user.driver_id },
       process.env.JWT_SECRET,
       { expiresIn: "7d" }
     );
-
-    console.log("✅ Login chauffeur réussi pour:", user.email);
-    console.log("👤 driverId:", user.driver_id);
 
     res.json({
       token,
@@ -344,106 +355,22 @@ app.post("/api/driver/login", (req, res) => {
   });
 });
 
-// ── Refresh token pour "Se souvenir de moi" ──
+// ── Refresh token ──
 app.post("/api/driver/refresh", (req, res) => {
   const { refreshToken } = req.body;
-  
-  if (!refreshToken) {
-    return res.status(400).json({ message: "Refresh token manquant" });
-  }
+  if (!refreshToken) return res.status(400).json({ message: "Refresh token manquant" });
   
   try {
     const decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET);
-    
     const newToken = jwt.sign(
       { id: decoded.id, email: decoded.email, driverId: decoded.driverId },
       process.env.JWT_SECRET,
       { expiresIn: "7d" }
     );
-    
     res.json({ token: newToken });
   } catch (err) {
     res.status(401).json({ message: "Refresh token invalide" });
   }
-});
-
-
-// ── Google Login (à intégrer plus tard) ──
-app.post("/api/driver/google-login", async (req, res) => {
-  const { googleToken, email, name } = req.body;
-  
-  if (!googleToken || !email) {
-    return res.status(400).json({ message: "Token Google manquant" });
-  }
-  
-  // Vérifier si l'utilisateur existe déjà
-  db.query("SELECT * FROM users WHERE email = ?", [email], async (err, results) => {
-    if (err) return res.status(500).json({ message: "Erreur serveur" });
-    
-    let userId;
-    let driverId;
-    
-    if (results.length === 0) {
-      // Créer un nouveau compte
-      const randomPassword = Math.random().toString(36).substring(2) + Date.now().toString();
-      const hashedPassword = await bcrypt.hash(randomPassword, 10);
-      
-      db.query(
-        "INSERT INTO users (nom, prenom, email, password, role) VALUES (?, ?, ?, ?, 'driver')",
-        [name?.split(" ")[0] || "Google", name?.split(" ")[1] || "User", email, hashedPassword],
-        (err, result) => {
-          if (err) return res.status(500).json({ message: "Erreur création compte" });
-          
-          userId = result.insertId;
-          
-          db.query(
-            "INSERT INTO drivers (user_id, is_online) VALUES (?, false)",
-            [userId],
-            (err2, result2) => {
-              if (err2) return res.status(500).json({ message: "Erreur création chauffeur" });
-              
-              driverId = result2.insertId;
-              
-              const token = jwt.sign(
-                { id: userId, email: email, driverId: driverId },
-                process.env.JWT_SECRET,
-                { expiresIn: "7d" }
-              );
-              
-              res.json({
-                token,
-                user: { id: userId, email, nom: name?.split(" ")[0] || "Google", prenom: name?.split(" ")[1] || "User", driverId }
-              });
-            }
-          );
-        }
-      );
-    } else {
-      // Utilisateur existe déjà
-      const user = results[0];
-      
-      // Vérifier si c'est un chauffeur
-      db.query("SELECT id FROM drivers WHERE user_id = ?", [user.id], (err, driverResults) => {
-        if (err) return res.status(500).json({ message: "Erreur serveur" });
-        
-        let existingDriverId = null;
-        if (driverResults.length > 0) {
-          existingDriverId = driverResults[0].id;
-        }
-        
-        const token = jwt.sign(
-          { id: user.id, email: user.email, driverId: existingDriverId },
-          process.env.JWT_SECRET,
-          { expiresIn: "7d" }
-        );
-        
-        res.json({
-          token,
-          user: { id: user.id, email: user.email, nom: user.nom, prenom: user.prenom, driverId: existingDriverId }
-        });
-      });
-    }
-  });
 });
 
 // ── Profil chauffeur ──
@@ -496,7 +423,6 @@ app.post("/api/trips/create", authenticateDriver, (req, res) => {
 
 // ── Demandes passagers visibles par le chauffeur ──
 app.get("/api/trips/driver_requests", authenticateDriver, (req, res) => {
-
   db.query(
     `SELECT 
       dm.id,
@@ -511,15 +437,34 @@ app.get("/api/trips/driver_requests", authenticateDriver, (req, res) => {
      JOIN users u ON dm.user_id = u.id
      ORDER BY dm.created_at DESC`,
     (err, results) => {
-
       if (err) return res.status(500).json({ message: "Erreur serveur" });
-
       res.json(results);
-
     }
   );
-
 });
+
+// ── Récupérer les réservations (alias) ──
+app.get("/api/trips/reservations", authenticateDriver, (req, res) => {
+  db.query(
+    `SELECT 
+      dm.id,
+      dm.depart,
+      dm.destination,
+      dm.places,
+      dm.status,
+      u.nom,
+      u.prenom,
+      u.telephone
+     FROM demandes dm
+     JOIN users u ON dm.user_id = u.id
+     ORDER BY dm.created_at DESC`,
+    (err, results) => {
+      if (err) return res.status(500).json({ message: "Erreur serveur" });
+      res.json(results);
+    }
+  );
+});
+>>>>>>> 4b525d8 (Ajout carte bus-map, correction gestion token 401, amélioration recherche)
 
 // ── Stats chauffeur ──
 app.get("/api/driver/stats", authenticateDriver, (req, res) => {
@@ -567,12 +512,12 @@ app.post("/api/driver/update_location", authenticateDriver, (req, res) => {
   );
 });
 
-
 // ── Accepter / Refuser réservation ──
 app.post("/api/trips/reservation_action", authenticateDriver, (req, res) => {
-
   const { reservation_id, status } = req.body;
+  if (!reservation_id || !status) return res.status(400).json({ message: "Champs manquants" });
 
+<<<<<<< HEAD
   if (!reservation_id || !status) {
     return res.status(400).json({ message: "Champs manquants" });
   }
@@ -629,12 +574,32 @@ app.post("/api/trips/reservation_action", authenticateDriver, (req, res) => {
         );
 
       }
+=======
+  db.query("SELECT * FROM demandes WHERE id = ?", [reservation_id], (err, results) => {
+    if (err) return res.status(500).json({ message: "Erreur serveur" });
+    if (results.length === 0) return res.status(404).json({ message: "Demande introuvable" });
+>>>>>>> 4b525d8 (Ajout carte bus-map, correction gestion token 401, amélioration recherche)
 
+    const demande = results[0];
+    if (status === "accepted") {
+      db.query(
+        "INSERT INTO reservations (trip_id, user_id, places) VALUES (?, ?, ?)",
+        [demande.trip_id, demande.user_id, demande.places],
+        (err2) => {
+          if (err2) return res.status(500).json({ message: "Erreur création réservation" });
+          db.query("UPDATE demandes SET status = 'accepted' WHERE id = ?", [reservation_id]);
+          return res.json({ success: true, message: "Réservation créée" });
+        }
+      );
+    } else if (status === "rejected") {
+      db.query("UPDATE demandes SET status = 'rejected' WHERE id = ?", [reservation_id], () => {
+        return res.json({ success: true, message: "Demande refusée" });
+      });
     }
-  );
-
+  });
 });
 
+<<<<<<< HEAD
 
 // Récupérer les réservations d'un trajet spécifique
 app.get("/api/trips/reservations", authenticateDriver, (req, res) => {
@@ -665,8 +630,24 @@ app.get("/api/trips/reservations", authenticateDriver, (req, res) => {
     }
     res.json(results);
   });
+=======
+// ── Récupérer les réservations par trajet ──
+app.get("/api/trips/reservations", authenticateDriver, (req, res) => {
+  const { trip_id } = req.query;
+  db.query(
+    `SELECT r.id, r.places, u.nom, u.prenom, u.telephone
+     FROM reservations r
+     JOIN users u ON r.user_id = u.id
+     WHERE r.trip_id = ?
+     ORDER BY r.created_at DESC`,
+    [trip_id],
+    (err, results) => {
+      if (err) return res.status(500).json({ message: "Erreur serveur" });
+      res.json(results);
+    }
+  );
+>>>>>>> 4b525d8 (Ajout carte bus-map, correction gestion token 401, amélioration recherche)
 });
-
 
 // ── Modifier un trajet ──
 app.post("/api/trips/update", authenticateDriver, (req, res) => {
@@ -692,41 +673,18 @@ app.post("/api/trips/update", authenticateDriver, (req, res) => {
 // ── Supprimer un trajet ──
 app.delete("/api/trips/delete/:id", authenticateDriver, (req, res) => {
   const tripId = req.params.id;
-
-  // 1. Vérifier s'il y a des réservations liées
-  db.query(
-    "SELECT COUNT(*) AS total FROM demandes WHERE trip_id = ? AND status != 'rejected'",
-    [tripId],
-    (err, result) => {
-      if (err) {
-        return res.status(500).json({ message: "Erreur serveur" });
-      }
-      if (result[0].total > 0) {
-        return res.status(400).json({
-          message: "Impossible de supprimer : des réservations existent"
-        });
-      }
-
-      // 2. Supprimer le trajet
-      db.query(
-        "DELETE FROM trajets WHERE id = ?",
-        [tripId],
-        (err2, result2) => {
-          if (err2) {
-            return res.status(500).json({ message: "Erreur suppression" });
-          }
-          if (result2.affectedRows === 0) {
-            return res.status(404).json({ message: "Trajet introuvable" });
-          }
-          res.json({ success: true, message: "Trajet supprimé" });
-        }
-      );
+  db.query("SELECT COUNT(*) AS total FROM demandes WHERE trip_id = ? AND status != 'rejected'", [tripId], (err, result) => {
+    if (err) return res.status(500).json({ message: "Erreur serveur" });
+    if (result[0].total > 0) {
+      return res.status(400).json({ message: "Impossible de supprimer : des réservations existent" });
     }
-  );
+    db.query("DELETE FROM trajets WHERE id = ?", [tripId], (err2, result2) => {
+      if (err2) return res.status(500).json({ message: "Erreur suppression" });
+      if (result2.affectedRows === 0) return res.status(404).json({ message: "Trajet introuvable" });
+      res.json({ success: true, message: "Trajet supprimé" });
+    });
+  });
 });
-
-
-
 
 // ================= TRANSPORT URBAIN =================
 
@@ -881,7 +839,6 @@ async function getInterpolatedOrder(lat, lon, ligneId, seuilM = 100) {
 }
 
 async function getOrdreForPoint(lat, lon, ligneId) {
-  // 1. Arrêt réel proche (rayon 50 m)
   const arretsProches = await findArretsProches(lat, lon, 50);
   for (const a of arretsProches) {
     const lignes = await getLignesByArret(a.id);
@@ -889,7 +846,6 @@ async function getOrdreForPoint(lat, lon, ligneId) {
       return await getOrdreArret(ligneId, a.id);
     }
   }
-  // 2. Interpolation
   return await getInterpolatedOrder(lat, lon, ligneId);
 }
 
@@ -901,8 +857,8 @@ app.get("/api/transport/itineraires", async (req, res) => {
   }
 
   try {
-    const arretsDepart = await findArretsProches(lat_depart, lon_depart, 2000);
-    const arretsArrivee = await findArretsProches(lat_arrivee, lon_arrivee, 2000);
+    const arretsDepart = await findArretsProches(lat_depart, lon_depart, 500);
+    const arretsArrivee = await findArretsProches(lat_arrivee, lon_arrivee, 500);
 
     if (arretsDepart.length === 0 || arretsArrivee.length === 0) {
       return res.json({ itineraires: [], message: "Aucun arrêt trouvé à proximité" });
@@ -964,6 +920,7 @@ app.get("/api/transport/itineraires", async (req, res) => {
     res.status(500).json({ message: "Erreur calcul itinéraire" });
   }
 });
+
 // ================= FONCTIONS UTILITAIRES DE BASE =================
 function findArretsProches(lat, lon, rayon) {
   return new Promise((resolve, reject) => {
@@ -1027,6 +984,15 @@ function getHorairesProchains(ligneId) {
     );
   });
 }
+
+// ================= TEST =================
+app.get("/api/test", (req, res) => {
+  db.query("SELECT 1+1 AS result", (err, results) => {
+    if (err) return res.json({ status: "MySQL ❌", error: err.message });
+    res.json({ status: "MySQL ✅", solution: results[0].result, database: process.env.DB_NAME });
+  });
+});
+
 // ================= SERVER =================
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, "0.0.0.0", () => {

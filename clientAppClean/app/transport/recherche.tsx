@@ -9,6 +9,7 @@ import {
   ScrollView,
 } from "react-native";
 import { useState, useEffect, useRef, useCallback } from "react";
+import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as Location from "expo-location";
 import {
@@ -77,7 +78,6 @@ export default function RechercheTransport() {
           type: "arret",
         })));
       } else {
-        // Fallback Google Places
         const places = await autocompleteAddress(departSaisi, positionActuelle);
         setSuggestionsDepart(places.map(p => ({
           id: p.placeId,
@@ -93,7 +93,7 @@ export default function RechercheTransport() {
     return () => { if (departTimeout.current) clearTimeout(departTimeout.current); };
   }, [departSaisi, positionActuelle]);
 
-  // Autocomplétion destination — BDD en priorité, Google Places en fallback
+  // Autocomplétion destination
   useEffect(() => {
     if (destTimeout.current) clearTimeout(destTimeout.current);
     if (isSelectingDest.current) {
@@ -116,7 +116,6 @@ export default function RechercheTransport() {
           type: "arret",
         })));
       } else {
-        // Fallback Google Places
         const places = await autocompleteAddress(destinationSaisie, positionActuelle);
         setSuggestionsDestination(places.map(p => ({
           id: p.placeId,
@@ -132,7 +131,6 @@ export default function RechercheTransport() {
     return () => { if (destTimeout.current) clearTimeout(destTimeout.current); };
   }, [destinationSaisie, positionActuelle]);
 
-  // Sélection d'un item (arrêt BDD ou lieu Google)
   const selectItem = useCallback(async (type, item) => {
     if (type === "depart") {
       isSelectingDepart.current = true;
@@ -155,7 +153,6 @@ export default function RechercheTransport() {
         setGeocodingDepart(false);
       }
       departInputRef.current?.blur();
-
     } else {
       isSelectingDest.current = true;
       setDestinationSaisie(item.nom);
@@ -180,7 +177,6 @@ export default function RechercheTransport() {
     }
   }, []);
 
-  // Utiliser la position GPS actuelle comme départ
   const utiliserPositionActuelle = useCallback(async () => {
     const { status } = await Location.requestForegroundPermissionsAsync();
     if (status !== "granted") {
@@ -200,7 +196,6 @@ export default function RechercheTransport() {
     setDepartSaisi(adresse || `${lat.toFixed(4)}, ${lon.toFixed(4)}`);
   }, []);
 
-  // Lancer la recherche d'itinéraire
   const handleRecherche = useCallback(async () => {
     if (!coordsDepart || !coordsArrivee) {
       Alert.alert("Erreur", "Choisissez un départ et une destination valides.");
@@ -227,7 +222,6 @@ export default function RechercheTransport() {
     }
   }, [coordsDepart, coordsArrivee]);
 
-  // Rendu des suggestions
   const renderSuggestions = (suggestions, onSelect) => (
     <ScrollView style={styles.suggestionsList} nestedScrollEnabled keyboardShouldPersistTaps="handled">
       {suggestions.map((item) => (
@@ -318,25 +312,43 @@ export default function RechercheTransport() {
         onPress={handleRecherche}
         disabled={!coordsDepart || !coordsArrivee || loading}
       >
-        {loading
-          ? <ActivityIndicator color="#fff" />
-          : <Text style={styles.btnText}>Trouver un itinéraire</Text>
-        }
+        {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>Trouver un itinéraire</Text>}
       </TouchableOpacity>
 
       {/* RÉSULTATS */}
       {resultats.length > 0 && (
         <View style={styles.results}>
-          <Text style={styles.sectionTitle}>Itinéraires proposés</Text>
+          <Text style={styles.sectionTitle}>
+            🚍 {resultats.length} itinéraire{resultats.length > 1 ? 's' : ''} trouvé{resultats.length > 1 ? 's' : ''}
+          </Text>
           {resultats.map((item, idx) => (
-            <View key={idx} style={styles.card}>
+            <TouchableOpacity
+              key={`${item.ligne.id}-${item.depart.nom}-${item.arrivee.nom}`}
+              style={styles.card}
+              onPress={() => {
+                // Envoyer toutes les coordonnées nécessaires à la carte
+                router.push({
+                  pathname: "/transport/bus-map",
+                  params: {
+                    ligneId: item.ligne.id,
+                    ligneNumero: item.ligne.numero,
+                    departNom: item.depart.nom,
+                    arriveeNom: item.arrivee.nom,
+                    departLat: item.depart.lat.toString(),
+                    departLon: item.depart.lon.toString(),
+                    arriveeLat: item.arrivee.lat.toString(),
+                    arriveeLon: item.arrivee.lon.toString(),
+                  },
+                });
+              }}
+            >
               <Text style={styles.ligne}>Ligne {item.ligne.numero} — {item.ligne.nom}</Text>
               <Text style={styles.cardText}>De {item.depart.nom} à {item.arrivee.nom}</Text>
               <Text style={styles.cardText}>Durée estimée : {item.duree_estimee} min</Text>
               {item.horaires.length > 0 && (
                 <Text style={styles.cardText}>Prochains départs : {item.horaires.join(", ")}</Text>
               )}
-            </View>
+            </TouchableOpacity>
           ))}
         </View>
       )}
