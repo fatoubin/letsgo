@@ -192,35 +192,21 @@ app.post("/api/client/trajets", authenticate, (req, res) => {
 
 // ── Créer une demande (réservation) ──
 app.post("/api/client/demandes", authenticate, (req, res) => {
-  console.log("========== DEBUT REQUETE DEMANDE ==========");
-  console.log("Headers:", req.headers);
-  console.log("Body recu:", req.body);
-  
-  const { depart, destination, date_depart, heure_depart, places, prix, trip_id } = req.body;
-  console.log("Champs extraits:", { depart, destination, date_depart, heure_depart, places });
-  
+  const { depart, destination, date_depart, heure_depart, places } = req.body;
   if (!depart || !destination || !date_depart || !heure_depart || !places) {
-    console.log("❌ CHAMP MANQUANT !");
-    console.log("depart manquant?", !depart);
-    console.log("destination manquant?", !destination);
-    console.log("date_depart manquant?", !date_depart);
-    console.log("heure_depart manquant?", !heure_depart);
-    console.log("places manquant?", !places);
-    return res.status(400).json({ message: "Champs manquants", recu: req.body });
+    return res.status(400).json({ message: "Champs manquants" });
   }
 
-  db.query(
-    "INSERT INTO demandes (user_id, depart, destination, date_depart, heure_depart, places, prix, trip_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-    [req.user.id, depart, destination, date_depart, heure_depart, places, prix || null, trip_id || null],
-    (err, result) => {
-      if (err) {
-        console.error("❌ Erreur insertion:", err);
-        return res.status(500).json({ message: "Erreur serveur" });
-      }
-      console.log("✅ Demande créée avec ID:", result.insertId);
-      res.status(201).json({ message: "Demande enregistrée avec succès", id: result.insertId });
+  const sql = "INSERT INTO demandes (user_id, depart, destination, date_depart, heure_depart, places) VALUES (?, ?, ?, ?, ?, ?)";
+  const values = [req.user.id, depart, destination, date_depart, heure_depart, places];
+
+  db.query(sql, values, (err, result) => {
+    if (err) {
+      console.error("❌ Erreur insertion demande:", err);
+      return res.status(500).json({ message: "Erreur serveur", detail: err.message });
     }
-  );
+    res.status(201).json({ message: "Demande enregistrée avec succès", id: result.insertId });
+  });
 });
 // ── Récupérer ses propres demandes ──
 app.get("/api/client/mes-demandes", authenticate, (req, res) => {
