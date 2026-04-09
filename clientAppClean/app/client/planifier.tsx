@@ -21,50 +21,45 @@ export default function PlanifierScreen() {
   const [places, setPlaces] = useState("1");
   const [loading, setLoading] = useState(false);
 
-  // États pour la date et l'heure
   const [date, setDate] = useState(new Date());
   const [heure, setHeure] = useState(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
 
-  // Formatage pour affichage
   const formatDate = (d: Date) => {
-    return d.toLocaleDateString("fr-FR", {
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    });
+    const y = d.getFullYear();
+    const m = (d.getMonth() + 1).toString().padStart(2, "0");
+    const j = d.getDate().toString().padStart(2, "0");
+    return `${y}-${m}-${j}`;
   };
 
   const formatTime = (t: Date) => {
-    return t.toLocaleTimeString("fr-FR", {
-      hour: "2-digit",
-      minute: "2-digit",
-    });
+    const h = t.getHours().toString().padStart(2, "0");
+    const m = t.getMinutes().toString().padStart(2, "0");
+    return `${h}:${m}`;
   };
 
   const handleSubmit = async () => {
-    if (!depart || !destination || !places) {
+    if (!depart.trim() || !destination.trim() || !places) {
       Alert.alert("Erreur", "Veuillez remplir tous les champs");
       return;
     }
 
     setLoading(true);
     try {
-      // Convertir la date au format YYYY-MM-DD
-      const dateStr = formatDate(date).split("/").reverse().join("-");
+      const dateStr = formatDate(date);
       const timeStr = formatTime(heure);
 
       await creerDemande({
-        depart,
-        destination,
+        depart: depart.trim(),
+        destination: destination.trim(),
         date_depart: dateStr,
         heure_depart: timeStr,
         places: parseInt(places),
       });
-      
+
       Alert.alert(
-        "Succès", 
+        "Succès",
         "Votre demande a été enregistrée. Un conducteur vous contactera bientôt."
       );
       router.back();
@@ -106,9 +101,7 @@ export default function PlanifierScreen() {
           onPress={() => setShowDatePicker(true)}
         >
           <Ionicons name="calendar" size={20} color="#4DA3FF" />
-          <Text style={styles.pickerText}>
-            {formatDate(date)}
-          </Text>
+          <Text style={styles.pickerText}>{formatDate(date)}</Text>
         </TouchableOpacity>
 
         {showDatePicker && (
@@ -118,9 +111,7 @@ export default function PlanifierScreen() {
             display={Platform.OS === "ios" ? "spinner" : "default"}
             onChange={(event, selectedDate) => {
               setShowDatePicker(false);
-              if (selectedDate) {
-                setDate(selectedDate);
-              }
+              if (selectedDate) setDate(selectedDate);
             }}
             minimumDate={new Date()}
           />
@@ -132,9 +123,7 @@ export default function PlanifierScreen() {
           onPress={() => setShowTimePicker(true)}
         >
           <Ionicons name="time" size={20} color="#4DA3FF" />
-          <Text style={styles.pickerText}>
-            {formatTime(heure)}
-          </Text>
+          <Text style={styles.pickerText}>{formatTime(heure)}</Text>
         </TouchableOpacity>
 
         {showTimePicker && (
@@ -144,9 +133,7 @@ export default function PlanifierScreen() {
             display={Platform.OS === "ios" ? "spinner" : "default"}
             onChange={(event, selectedTime) => {
               setShowTimePicker(false);
-              if (selectedTime) {
-                setHeure(selectedTime);
-              }
+              if (selectedTime) setHeure(selectedTime);
             }}
           />
         )}

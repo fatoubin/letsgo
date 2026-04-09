@@ -220,20 +220,24 @@ export async function getFavoris() {
 export async function creerDemande(payload: {
   depart: string;
   destination: string;
-  date_depart: string;  // Format: YYYY-MM-DD
-  heure_depart: string;  // Format: HH:MM
+  date_depart: string;
+  heure_depart: string;
   places: number;
 }) {
+  console.log("📤 Envoi de la demande avec payload:", payload);
+  console.log("📤 URL:", `${API_URL}/api/client/demandes`);
   
-  return fetchWithAuth("/api/client/demandes", {
+  const result = await fetchWithAuth("/api/client/demandes", {
     method: "POST",
     body: JSON.stringify(payload),
-    
   });
+  
+  console.log("📥 Réponse reçue:", result);
+  return result;
 }
-
 // Optionnel : récupérer ses demandes
-export async function getMesDemandes() {
+export async function getMesDemandes() { 
+  
   return fetchWithAuth("/api/client/mes-demandes");
 }
 // ==============================

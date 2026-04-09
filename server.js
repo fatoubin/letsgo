@@ -125,7 +125,6 @@ app.post("/api/auth/login", (req, res) => {
     const token = "TOKEN_" + Date.now() + "_" + Math.random().toString(36).substring(2);
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 jours
 
-    // Stocker le token en base
     db.query(
       "INSERT INTO tokens (token, user_id, expires_at) VALUES (?, ?, ?)",
       [token, user.id, expiresAt],
@@ -189,22 +188,40 @@ app.post("/api/client/trajets", authenticate, (req, res) => {
   );
 });
 
+
+
 // ── Créer une demande (réservation) ──
 app.post("/api/client/demandes", authenticate, (req, res) => {
+  console.log("========== DEBUT REQUETE DEMANDE ==========");
+  console.log("Headers:", req.headers);
+  console.log("Body recu:", req.body);
+  
   const { depart, destination, date_depart, heure_depart, places, prix, trip_id } = req.body;
-  if (!depart || !destination || !date_depart || !heure_depart || !places || !prix)
-    return res.status(400).json({ message: "Champs manquants" });
+  console.log("Champs extraits:", { depart, destination, date_depart, heure_depart, places });
+  
+  if (!depart || !destination || !date_depart || !heure_depart || !places) {
+    console.log("❌ CHAMP MANQUANT !");
+    console.log("depart manquant?", !depart);
+    console.log("destination manquant?", !destination);
+    console.log("date_depart manquant?", !date_depart);
+    console.log("heure_depart manquant?", !heure_depart);
+    console.log("places manquant?", !places);
+    return res.status(400).json({ message: "Champs manquants", recu: req.body });
+  }
 
   db.query(
     "INSERT INTO demandes (user_id, depart, destination, date_depart, heure_depart, places, prix, trip_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-    [req.user.id, depart, destination, date_depart, heure_depart, places, trip_id || null],
+    [req.user.id, depart, destination, date_depart, heure_depart, places, prix || null, trip_id || null],
     (err, result) => {
-      if (err) return res.status(500).json({ message: "Erreur serveur" });
+      if (err) {
+        console.error("❌ Erreur insertion:", err);
+        return res.status(500).json({ message: "Erreur serveur" });
+      }
+      console.log("✅ Demande créée avec ID:", result.insertId);
       res.status(201).json({ message: "Demande enregistrée avec succès", id: result.insertId });
     }
   );
 });
-
 // ── Récupérer ses propres demandes ──
 app.get("/api/client/mes-demandes", authenticate, (req, res) => {
   db.query(
@@ -443,166 +460,9 @@ app.get("/api/trips/driver_requests", authenticateDriver, (req, res) => {
   );
 });
 
-// ── Récupérer les réservations (alias) ──
-app.get("/api/trips/reservations", authenticateDriver, (req, res) => {
-  db.query(
-    `SELECT 
-      dm.id,
-      dm.depart,
-      dm.destination,
-      dm.places,
-      dm.status,
-      u.nom,
-      u.prenom,
-      u.telephone
-     FROM demandes dm
-     JOIN users u ON dm.user_id = u.id
-     ORDER BY dm.created_at DESC`,
-    (err, results) => {
-      if (err) return res.status(500).json({ message: "Erreur serveur" });
-      res.json(results);
-    }
-  );
-}); 4b525d8 (Ajout carte bus-map, correction gestion token 401, amélioration recherche)
-
-// ── Stats chauffeur ──
-app.get("/api/driver/stats", authenticateDriver, (req, res) => {
-  const { driver_id } = req.query;
-  if (!driver_id) return res.status(400).json({ message: "driver_id requis" });
-
-  db.query(
-    "SELECT COUNT(*) AS total_trips FROM trajets WHERE user_id = (SELECT user_id FROM drivers WHERE id = ?)",
-    [driver_id],
-    (err, results) => {
-      if (err) return res.status(500).json({ message: "Erreur serveur" });
-      res.json(results[0]);
-    }
-  );
-});
-
-// ── Historique chauffeur ──
-app.get("/api/driver/history", authenticateDriver, (req, res) => {
-  const { driver_id } = req.query;
-  if (!driver_id) return res.status(400).json({ message: "driver_id requis" });
-
-  db.query(
-    "SELECT * FROM trajets WHERE user_id = (SELECT user_id FROM drivers WHERE id = ?) ORDER BY heure DESC",
-    [driver_id],
-    (err, results) => {
-      if (err) return res.status(500).json({ message: "Erreur serveur" });
-      res.json(results);
-    }
-  );
-});
-
-// ── Mise à jour position chauffeur ──
-app.post("/api/driver/update_location", authenticateDriver, (req, res) => {
-  const { driver_id, lat, lng } = req.body;
-  if (!driver_id || lat === undefined || lng === undefined)
-    return res.status(400).json({ message: "driver_id, lat et lng requis" });
-
-  db.query(
-    "UPDATE drivers SET is_online = true WHERE id = ?",
-    [driver_id],
-    (err) => {
-      if (err) return res.status(500).json({ message: "Erreur mise à jour position" });
-      res.json({ message: "Position mise à jour" });
-    }
-  );
-});
-
-// ── Accepter / Refuser réservation ──
-app.post("/api/trips/reservation_action", authenticateDriver, (req, res) => {
-  const { reservation_id, status } = req.body;
-  if (!reservation_id || !status) return res.status(400).json({ message: "Champs manquants" });
-
-
-  if (!reservation_id || !status) {
-    return res.status(400).json({ message: "Champs manquants" });
-  }
-
-  // 1. récupérer la demande
-  db.query(
-    "SELECT * FROM demandes WHERE id = ?",
-    [reservation_id],
-    (err, results) => {
-
-      if (err) return res.status(500).json({ message: "Erreur serveur" });
-
-      if (results.length === 0) {
-        return res.status(404).json({ message: "Demande introuvable" });
-      }
-
-      const demande = results[0];
-
-      // 2. si accepté → créer réservation
-      if (status === "accepted") {
-
-        db.query(
-          "INSERT INTO reservations (trip_id, user_id, places, prix) VALUES (?, ?, ?, ?)",
-          [demande.trip_id, demande.user_id, demande.places, demande.places],
-          (err2) => {
-
-            if (err2) {
-              return res.status(500).json({ message: "Erreur création réservation" });
-            }
-
-            // 3. update demande
-            db.query(
-              "UPDATE demandes SET status = 'accepted' WHERE id = ?",
-              
-              [reservation_id]
-            );
-
-            return res.json({ success: true, message: "Réservation créée" });
-
-          }
-        );
-
-      }
-
-      // 4. si refusé
-      if (status === "rejected") {
-
-        db.query(
-          "UPDATE demandes SET status = 'rejected' WHERE id = ?",
-          [reservation_id],
-          () => {
-            return res.json({ success: true, message: "Demande refusée" });
-          }
-        );
-
-      }
-  db.query("SELECT * FROM demandes WHERE id = ?", [reservation_id], (err, results) => {
-    if (err) return res.status(500).json({ message: "Erreur serveur" });
-    if (results.length === 0) return res.status(404).json({ message: "Demande introuvable" });
- 4b525d8 (Ajout carte bus-map, correction gestion token 401, amélioration recherche)
-
-    const demande = results[0];
-    if (status === "accepted") {
-      db.query(
-        "INSERT INTO reservations (trip_id, user_id, places) VALUES (?, ?, ?)",
-        [demande.trip_id, demande.user_id, demande.places],
-        (err2) => {
-          if (err2) return res.status(500).json({ message: "Erreur création réservation" });
-          db.query("UPDATE demandes SET status = 'accepted' WHERE id = ?", [reservation_id]);
-          return res.json({ success: true, message: "Réservation créée" });
-        }
-      );
-    } else if (status === "rejected") {
-      db.query("UPDATE demandes SET status = 'rejected' WHERE id = ?", [reservation_id], () => {
-        return res.json({ success: true, message: "Demande refusée" });
-      });
-    }
-  });
-});
-
- HEAD
-
-// Récupérer les réservations d'un trajet spécifique
+// ── Récupérer les réservations d'un trajet spécifique ──
 app.get("/api/trips/reservations", authenticateDriver, (req, res) => {
   const { trip_id } = req.query;
-
   if (!trip_id) {
     return res.status(400).json({ message: "trip_id requis" });
   }
@@ -628,23 +488,97 @@ app.get("/api/trips/reservations", authenticateDriver, (req, res) => {
     }
     res.json(results);
   });
+});
 
-// ── Récupérer les réservations par trajet ──
-app.get("/api/trips/reservations", authenticateDriver, (req, res) => {
-  const { trip_id } = req.query;
+// ── Stats chauffeur ──
+app.get("/api/driver/stats", authenticateDriver, (req, res) => {
+  const { driver_id } = req.query;
+  if (!driver_id) return res.status(400).json({ message: "driver_id requis" });
+
   db.query(
-    `SELECT r.id, r.places, u.nom, u.prenom, u.telephone
-     FROM reservations r
-     JOIN users u ON r.user_id = u.id
-     WHERE r.trip_id = ?
-     ORDER BY r.created_at DESC`,
-    [trip_id],
+    "SELECT COUNT(*) AS total_trips FROM trajets WHERE user_id = (SELECT user_id FROM drivers WHERE id = ?)",
+    [driver_id],
+    (err, results) => {
+      if (err) return res.status(500).json({ message: "Erreur serveur" });
+      res.json(results[0]);
+    }
+  );
+});
+
+// ── Historique chauffeur ──
+app.get("/api/driver/history", authenticateDriver, (req, res) => {
+  const { driver_id } = req.query;
+  if (!driver_id) return res.status(400). json({ message: "driver_id requis" });
+
+  db.query(
+    "SELECT * FROM trajets WHERE user_id = (SELECT user_id FROM drivers WHERE id = ?) ORDER BY heure DESC",
+    [driver_id],
     (err, results) => {
       if (err) return res.status(500).json({ message: "Erreur serveur" });
       res.json(results);
     }
   );
-4b525d8 (Ajout carte bus-map, correction gestion token 401, amélioration recherche)
+});
+
+// ── Mise à jour position chauffeur ──
+// Note: vous devez avoir les colonnes lat et lng dans la table drivers pour que cette route soit complète.
+// Actuellement elle ne met à jour que is_online = true.
+app.post("/api/driver/update_location", authenticateDriver, (req, res) => {
+  const { driver_id, lat, lng } = req.body;
+  if (!driver_id || lat === undefined || lng === undefined)
+    return res.status(400).json({ message: "driver_id, lat et lng requis" });
+
+  db.query(
+    "UPDATE drivers SET is_online = true WHERE id = ?",
+    [driver_id],
+    (err) => {
+      if (err) return res.status(500).json({ message: "Erreur mise à jour position" });
+      res.json({ message: "Position mise à jour" });
+    }
+  );
+});
+
+// ── Accepter / Refuser réservation (corrigé) ──
+app.post("/api/trips/reservation_action", authenticateDriver, (req, res) => {
+  const { reservation_id, status } = req.body;
+  if (!reservation_id || !status) {
+    return res.status(400).json({ message: "Champs manquants" });
+  }
+
+  // 1. Récupérer la demande
+  db.query("SELECT * FROM demandes WHERE id = ?", [reservation_id], (err, results) => {
+    if (err) return res.status(500).json({ message: "Erreur serveur" });
+    if (results.length === 0) return res.status(404).json({ message: "Demande introuvable" });
+
+    const demande = results[0];
+
+    if (status === "accepted") {
+      // Récupérer le prix du trajet associé
+      db.query("SELECT prix FROM trajets WHERE id = ?", [demande.trip_id], (err2, tripResult) => {
+        if (err2) return res.status(500).json({ message: "Erreur récupération prix" });
+        const prix = tripResult[0]?.prix || 0;
+
+        db.query(
+          "INSERT INTO reservations (trip_id, user_id, places, prix) VALUES (?, ?, ?, ?)",
+          [demande.trip_id, demande.user_id, demande.places, prix],
+          (err3) => {
+            if (err3) return res.status(500).json({ message: "Erreur création réservation" });
+            db.query("UPDATE demandes SET status = 'accepted' WHERE id = ?", [reservation_id], (err4) => {
+              if (err4) return res.status(500).json({ message: "Erreur mise à jour demande" });
+              res.json({ success: true, message: "Réservation créée" });
+            });
+          }
+        );
+      });
+    } else if (status === "rejected") {
+      db.query("UPDATE demandes SET status = 'rejected' WHERE id = ?", [reservation_id], (err2) => {
+        if (err2) return res.status(500).json({ message: "Erreur mise à jour" });
+        res.json({ success: true, message: "Demande refusée" });
+      });
+    } else {
+      res.status(400).json({ message: "Statut invalide" });
+    }
+  });
 });
 
 // ── Modifier un trajet ──
