@@ -277,6 +277,58 @@ app.get("/api/client/mes-reservations", authenticate, (req, res) => {
   });
 });
 
+// ── Réserver un trajet existant ──
+app.post("/api/client/reserver", authenticate, (req, res) => {
+  const { trip_id, places } = req.body;
+  
+  if (!trip_id || !places) {
+    return res.status(400).json({ message: "trip_id et places requis" });
+  }
+
+  // Vérifier que le trajet existe et a assez de places
+  db.query("SELECT id, places, prix, user_id as chauffeur_id FROM trajets WHERE id = ?", [trip_id], (err, results) => {
+    if (err) {
+      console.error("❌ Erreur vérification trajet:", err);
+      return res.status(500).json({ message: "Erreur serveur" });
+    }
+    if (results.length === 0) {
+      return res.status(404).json({ message: "Trajet non trouvé" });
+    }
+
+    const trajet = results[0];
+    if (trajet.places < places) {
+      return res.status(400).json({ message: "Places insuffisantes" });
+    }
+
+    // Créer la réservation
+    const prixTotal = trajet.prix * places;
+    db.query(
+      "INSERT INTO reservations (trip_id, user_id, places, prix) VALUES (?, ?, ?, ?)",
+      [trip_id, req.user.id, places, prixTotal],
+      (err2, result) => {
+        if (err2) {
+          console.error("❌ Erreur création réservation:", err2);
+          return res.status(500).json({ message: "Erreur création réservation" });
+        }
+
+        // Mettre à jour le nombre de places du trajet
+        db.query(
+          "UPDATE trajets SET places = places - ? WHERE id = ?",
+          [places, trip_id],
+          (err3) => {
+            if (err3) console.error("❌ Erreur mise à jour places:", err3);
+          }
+        );
+
+        res.status(201).json({ 
+          message: "Réservation effectuée avec succès", 
+          reservationId: result.insertId 
+        });
+      }
+    );
+  });
+});
+
 // =======================================================
 // ============= ROUTES CHAUFFEUR ========================
 // =======================================================
