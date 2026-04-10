@@ -1001,6 +1001,48 @@ function getHorairesProchains(ligneId) {
   });
 }
 
+// ================= INTERURBAIN =================
+
+// Récupérer toutes les villes
+app.get("/api/interurbain/villes", (req, res) => {
+  db.query("SELECT id, nom FROM villes ORDER BY nom", (err, rows) => {
+    if (err) return res.status(500).json({ message: "Erreur serveur" });
+    res.json(rows);
+  });
+});
+
+// Récupérer les lignes entre deux villes
+app.get("/api/interurbain/recherche", (req, res) => {
+  const { depart_id, arrivee_id } = req.query;
+  
+  db.query(
+    `SELECT l.*, 
+     vd.nom as ville_depart, va.nom as ville_arrivee
+     FROM lignes_interurbaines l
+     JOIN villes vd ON l.ville_depart_id = vd.id
+     JOIN villes va ON l.ville_arrivee_id = va.id
+     WHERE l.ville_depart_id = ? AND l.ville_arrivee_id = ?`,
+    [depart_id, arrivee_id],
+    (err, results) => {
+      if (err) return res.status(500).json({ message: "Erreur serveur" });
+      res.json(results);
+    }
+  );
+});
+
+// Récupérer les horaires d'une ligne
+app.get("/api/interurbain/lignes/:id/horaires", (req, res) => {
+  const ligneId = req.params.id;
+  
+  db.query(
+    "SELECT * FROM horaires_interurbains WHERE ligne_id = ? AND statut = 'actif' ORDER BY heure_depart",
+    [ligneId],
+    (err, rows) => {
+      if (err) return res.status(500).json({ message: "Erreur serveur" });
+      res.json(rows);
+    }
+  );
+});
 // ================= TEST =================
 app.get("/api/test", (req, res) => {
   db.query("SELECT 1+1 AS result", (err, results) => {

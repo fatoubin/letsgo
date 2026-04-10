@@ -1,6 +1,6 @@
 import { Tabs } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { View, Text } from "react-native";
+import { View, Text, StyleSheet } from "react-native";
 
 function TabIcon({
   name,
@@ -32,12 +32,7 @@ export default function TabsLayout() {
     <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarStyle: {
-          backgroundColor: "#020617",
-          borderTopColor: "#1E293B",
-          borderTopWidth: 1,
-          height: 80,
-        },
+        tabBarStyle: styles.tabBar,
         tabBarShowLabel: false,
         tabBarActiveTintColor: "#3B82F6",
         tabBarInactiveTintColor: "#94A3B8",
@@ -85,3 +80,19 @@ export default function TabsLayout() {
     </Tabs>
   );
 }
+
+const styles = StyleSheet.create({
+  tabBar: {
+    backgroundColor: "#020617",
+    borderTopColor: "#1E293B",
+    borderTopWidth: 1,
+    height: 70,
+    paddingBottom: 8,
+    paddingTop: 8,
+    // 👇 AJOUTEZ CES 3 LIGNES POUR COLLER EN BAS
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+  },
+});
