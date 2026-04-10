@@ -240,6 +240,16 @@ export async function getMesDemandes() {
   
   return fetchWithAuth("/api/client/mes-demandes");
 }
+
+export async function getMesReservations() {
+  return fetchWithAuth("/api/client/mes-reservations");
+}
+export async function reserverTrajet(trip_id: number, places: number) {
+  return fetchWithAuth("/api/client/reserver", {
+    method: "POST",
+    body: JSON.stringify({ trip_id, places }),
+  });
+}
 // ==============================
 // 🔍 TEST DE CONNEXION
 // ==============================

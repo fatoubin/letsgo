@@ -64,23 +64,18 @@ export default function MesPlanifications() {
   };
 
   // 🔥 Filtres + recherche
-  const filteredDemandes = useMemo(() => {
-    const now = new Date();
-
-    return demandes.filter((d) => {
-      // Recherche textuelle
-      const txt = `${d.depart} ${d.destination}`.toLowerCase();
-      if (!txt.includes(search.toLowerCase())) return false;
-
-      // Filtre par statut
-      if (filtre !== "TOUTES" && d.statut !== filtre.toLowerCase()) return false;
-
-      // Optionnel : on pourrait aussi filtrer par date passée/future
-      // mais on garde simple avec le statut
-
-      return true;
-    });
-  }, [demandes, search, filtre]);
+ const filteredDemandes = useMemo(() => {
+  return demandes.filter((d) => {
+    // Recherche textuelle
+    const txt = `${d.depart} ${d.destination}`.toLowerCase();
+    if (!txt.includes(search.toLowerCase())) return false;
+    // Filtre par statut (si le filtre sélectionné n'est pas "TOUTES", on applique)
+    if (filtre !== "TOUTES" && d.statut !== filtre.toLowerCase()) return false;
+    // Option : forcer à ne montrer que les en_attente si le filtre est "TOUTES" ? 
+    // Plutôt laisser l'utilisateur choisir via les boutons.
+    return true;
+  });
+}, [demandes, search, filtre]);
 
   // ❌ Supprimer une demande
   const onDelete = (id: number) => {

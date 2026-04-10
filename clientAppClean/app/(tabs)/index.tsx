@@ -40,6 +40,17 @@ export default function HomeScreen() {
   <Text style={styles.dropdownText}>Mes planifications</Text>
 </TouchableOpacity>
 
+<TouchableOpacity
+  style={styles.dropdownItem}
+  onPress={() => {
+    setShowMenu(false);
+    router.push("/client/mes-reservations");
+  }}
+>
+  <Ionicons name="bookmark-outline" size={18} color="#fff" />
+  <Text style={styles.dropdownText}>Mes réservations</Text>
+</TouchableOpacity>
+
           <TouchableOpacity
             style={styles.dropdownItem}
             onPress={() => {
