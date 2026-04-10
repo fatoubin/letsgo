@@ -1,7 +1,7 @@
-import { View, Text, FlatList, StyleSheet, ActivityIndicator } from "react-native";
+import { View, Text, FlatList, StyleSheet, ActivityIndicator, TouchableOpacity, Alert } from "react-native";
 import { useFocusEffect } from "expo-router";
 import { useCallback, useState } from "react";
-import { getMesReservations } from "../../lib/api";
+import { getMesReservations, annulerReservation } from "../../lib/api";
 import { Ionicons } from "@expo/vector-icons";
 
 type Reservation = {
@@ -38,6 +38,29 @@ export default function MesReservations() {
       loadReservations();
     }, [])
   );
+
+  const handleAnnuler = (reservation: Reservation) => {
+    Alert.alert(
+      "Annuler la réservation",
+      `Voulez-vous vraiment annuler votre réservation pour ${reservation.depart} → ${reservation.destination} ?`,
+      [
+        { text: "Non", style: "cancel" },
+        {
+          text: "Oui, annuler",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await annulerReservation(reservation.id);
+              Alert.alert("Succès", "Réservation annulée");
+              loadReservations(); // Recharge la liste
+            } catch (error) {
+              Alert.alert("Erreur", "Impossible d'annuler la réservation");
+            }
+          },
+        },
+      ]
+    );
+  };
 
   const formatDate = (dateStr: string) => {
     const date = new Date(dateStr);
@@ -113,9 +136,15 @@ export default function MesReservations() {
               <Text style={styles.prixText}>{item.prix?.toLocaleString()} FCFA</Text>
             </View>
 
-            {/* Statut */}
-            <View style={styles.statusBadge}>
-              <Text style={styles.statusText}>✓ Réservé</Text>
+            {/* Boutons d'action */}
+            <View style={styles.actionButtons}>
+              <TouchableOpacity 
+                style={styles.cancelButton}
+                onPress={() => handleAnnuler(item)}
+              >
+                <Ionicons name="close-circle-outline" size={18} color="#ef4444" />
+                <Text style={styles.cancelButtonText}>Annuler</Text>
+              </TouchableOpacity>
             </View>
           </View>
         )}
@@ -222,16 +251,25 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "bold",
   },
-  statusBadge: {
-    marginTop: 10,
-    alignSelf: "flex-start",
-    backgroundColor: "#10B98120",
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 20,
+  actionButtons: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    marginTop: 12,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: "#2A3655",
   },
-  statusText: {
-    color: "#10B981",
+  cancelButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#EF444420",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    gap: 6,
+  },
+  cancelButtonText: {
+    color: "#ef4444",
     fontSize: 12,
     fontWeight: "500",
   },

@@ -250,6 +250,11 @@ export async function reserverTrajet(trip_id: number, places: number) {
     body: JSON.stringify({ trip_id, places }),
   });
 }
+export async function annulerReservation(reservationId: number) {
+  return fetchWithAuth(`/api/client/reservations/${reservationId}`, {
+    method: "DELETE",  // ← bien DELETE
+  });
+}
 // ==============================
 // 🔍 TEST DE CONNEXION
 // ==============================
