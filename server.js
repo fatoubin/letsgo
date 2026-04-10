@@ -251,6 +251,48 @@ app.delete("/api/client/demandes/:id", authenticate, (req, res) => {
     }
   );
 });
+// ── Récupérer les réservations du client ──
+app.get("/api/client/mes-reservations", authenticate, (req, res) => {
+  const sql = `
+    SELECT r.id, r.trip_id, r.places, r.prix, r.status as reservation_status, r.created_at,
+           t.depart, t.destination, t.heure, t.prix as trajet_prix
+    FROM reservations r
+    JOIN trajets t ON r.trip_id = t.id
+    WHERE r.user_id = ?
+    ORDER BY r.created_at DESC
+  `;
+  db.query(sql, [req.user.id], (err, results) => {
+    if (err) {
+      console.error("Erreur récupération réservations client:", err);
+      return res.status(500).json({ message: "Erreur serveur" });
+    }
+    res.json(results);
+  });
+});
+
+app.get("/api/client/mes-reservations", authenticate, (req, res) => {
+  const sql = `
+    SELECT 
+      r.id,
+      r.places,
+      r.prix,
+      r.created_at,
+      t.depart,
+      t.destination,
+      t.heure,
+      u.nom as conducteur_nom,
+      u.prenom as conducteur_prenom
+    FROM reservations r
+    JOIN trajets t ON r.trip_id = t.id
+    JOIN users u ON t.user_id = u.id
+    WHERE r.user_id = ?
+    ORDER BY r.created_at DESC
+  `;
+  db.query(sql, [req.user.id], (err, results) => {
+    if (err) return res.status(500).json({ message: "Erreur serveur" });
+    res.json(results);
+  });
+});
 
 // =======================================================
 // ============= ROUTES CHAUFFEUR ========================
