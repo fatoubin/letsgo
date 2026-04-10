@@ -1043,6 +1043,19 @@ app.get("/api/interurbain/lignes/:id/horaires", (req, res) => {
     }
   );
 });
+// Récupérer les gares d'une ville
+app.get("/api/interurbain/gares/:ville_id", (req, res) => {
+  const villeId = req.params.ville_id;
+  
+  db.query(
+    "SELECT id, nom, adresse FROM gares WHERE ville_id = ?",
+    [villeId],
+    (err, rows) => {
+      if (err) return res.status(500).json({ message: "Erreur serveur" });
+      res.json(rows);
+    }
+  );
+});
 // ================= TEST =================
 app.get("/api/test", (req, res) => {
   db.query("SELECT 1+1 AS result", (err, results) => {
