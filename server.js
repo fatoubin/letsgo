@@ -1043,6 +1043,43 @@ app.get("/api/interurbain/recherche", (req, res) => {
       res.json(results);
     }
   );
+});app.get("/api/interurbain/recherche", (req, res) => {
+  const { depart_id, arrivee_id } = req.query;
+  
+  console.log("🔍 Recherche:", { depart_id, arrivee_id });
+  
+  const sql = `
+    SELECT 
+      l.id,
+      l.duree_estimee,
+      l.prix,
+      l.compagnie,
+      vd.nom as ville_depart, 
+      va.nom as ville_arrivee,
+      gd.nom as gare_depart_nom,
+      ga.nom as gare_arrivee_nom
+    FROM lignes_interurbaines l
+    JOIN villes vd ON l.ville_depart_id = vd.id
+    JOIN villes va ON l.ville_arrivee_id = va.id
+    LEFT JOIN gares gd ON l.gare_depart_id = gd.id
+    LEFT JOIN gares ga ON l.gare_arrivee_id = ga.id
+    WHERE (l.ville_depart_id = ? AND l.ville_arrivee_id = ?)
+       OR (l.ville_depart_id = ? AND l.ville_arrivee_id = ?)
+  `;
+  
+  db.query(sql, [depart_id, arrivee_id, arrivee_id, depart_id], (err, results) => {
+    if (err) {
+      console.error("❌ Erreur recherche:", err);
+      return res.status(500).json({ message: "Erreur serveur" });
+    }
+    console.log("📋 Résultats:", results.map(r => ({ 
+      depart: r.ville_depart, 
+      arrivee: r.ville_arrivee,
+      gare_depart: r.gare_depart_nom,
+      gare_arrivee: r.gare_arrivee_nom
+    })));
+    res.json(results);
+  });
 });
 
 // Récupérer les horaires d'une ligne
