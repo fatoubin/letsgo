@@ -1015,16 +1015,31 @@ app.get("/api/interurbain/villes", (req, res) => {
 app.get("/api/interurbain/recherche", (req, res) => {
   const { depart_id, arrivee_id } = req.query;
   
+  // Requête qui fonctionne dans les deux sens
   db.query(
-    `SELECT l.*, 
-     vd.nom as ville_depart, va.nom as ville_arrivee
-     FROM lignes_interurbaines l
-     JOIN villes vd ON l.ville_depart_id = vd.id
-     JOIN villes va ON l.ville_arrivee_id = va.id
-     WHERE l.ville_depart_id = ? AND l.ville_arrivee_id = ?`,
-    [depart_id, arrivee_id],
+    `SELECT 
+      l.id,
+      l.duree_estimee,
+      l.prix,
+      l.compagnie,
+      vd.nom as ville_depart, 
+      va.nom as ville_arrivee,
+      COALESCE(gd.nom, 'Terminus principal') as gare_depart_nom,
+      COALESCE(ga.nom, 'Gare centrale') as gare_arrivee_nom
+    FROM lignes_interurbaines l
+    JOIN villes vd ON l.ville_depart_id = vd.id
+    JOIN villes va ON l.ville_arrivee_id = va.id
+    LEFT JOIN gares gd ON l.gare_depart_id = gd.id
+    LEFT JOIN gares ga ON l.gare_arrivee_id = ga.id
+    WHERE (l.ville_depart_id = ? AND l.ville_arrivee_id = ?)
+       OR (l.ville_depart_id = ? AND l.ville_arrivee_id = ?)
+    `,
+    [depart_id, arrivee_id, arrivee_id, depart_id],
     (err, results) => {
-      if (err) return res.status(500).json({ message: "Erreur serveur" });
+      if (err) {
+        console.error("❌ Erreur recherche:", err);
+        return res.status(500).json({ message: "Erreur serveur" });
+      }
       res.json(results);
     }
   );
