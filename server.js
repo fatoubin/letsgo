@@ -1050,10 +1050,18 @@ app.get("/api/interurbain/lignes/:id/horaires", (req, res) => {
   const ligneId = req.params.id;
   
   db.query(
-    "SELECT * FROM horaires_interurbains WHERE ligne_id = ? AND statut = 'actif' ORDER BY heure_depart",
+    `SELECT h.*, l.prix, l.ville_depart_id, l.ville_arrivee_id
+     FROM horaires_interurbains h
+     JOIN lignes_interurbaines l ON h.ligne_id = l.id
+     WHERE h.ligne_id = ? AND h.statut = 'actif'
+     ORDER BY h.heure_depart`,
     [ligneId],
     (err, rows) => {
-      if (err) return res.status(500).json({ message: "Erreur serveur" });
+      if (err) {
+        console.error("❌ Erreur horaires:", err);
+        return res.status(500).json({ message: "Erreur serveur" });
+      }
+      console.log(`📋 ${rows.length} horaires trouvés pour la ligne ${ligneId}`);
       res.json(rows);
     }
   );
@@ -1068,6 +1076,54 @@ app.get("/api/interurbain/gares/:ville_id", (req, res) => {
     (err, rows) => {
       if (err) return res.status(500).json({ message: "Erreur serveur" });
       res.json(rows);
+    }
+  );
+});
+app.post("/api/interurbain/reserver", authenticate, (req, res) => {
+  const { horaire_id, places } = req.body;
+  
+  console.log("📝 Réservation reçue:", { horaire_id, places, user_id: req.user.id });
+  
+  if (!horaire_id || !places) {
+    return res.status(400).json({ message: "Horaire et places requis" });
+  }
+  
+  // Récupérer le prix et les infos
+  db.query(
+    `SELECT l.prix, l.id as ligne_id, h.heure_depart, h.heure_arrivee
+     FROM horaires_interurbains h
+     JOIN lignes_interurbaines l ON h.ligne_id = l.id
+     WHERE h.id = ?`,
+    [horaire_id],
+    (err, results) => {
+      if (err) {
+        console.error("❌ Erreur récupération prix:", err);
+        return res.status(500).json({ message: "Erreur serveur" });
+      }
+      if (results.length === 0) {
+        return res.status(404).json({ message: "Horaire non trouvé" });
+      }
+      
+      const prix_total = results[0].prix * places;
+      
+      db.query(
+        `INSERT INTO reservations_interurbaines 
+         (user_id, horaire_id, places, prix_total, statut) 
+         VALUES (?, ?, ?, ?, 'confirmed')`,
+        [req.user.id, horaire_id, places, prix_total],
+        (err2, result) => {
+          if (err2) {
+            console.error("❌ Erreur insertion réservation:", err2);
+            return res.status(500).json({ message: "Erreur lors de la réservation" });
+          }
+          
+          console.log("✅ Réservation créée, ID:", result.insertId);
+          res.status(201).json({ 
+            message: "Réservation effectuée avec succès", 
+            reservationId: result.insertId 
+          });
+        }
+      );
     }
   );
 });
