@@ -622,47 +622,81 @@ app.post("/api/driver/update_location", authenticateDriver, (req, res) => {
   );
 });
 
-// ── Accepter / Refuser réservation (corrigé) ──
+// ── Accepter / Refuser réservation (VERSION CORRIGÉE) ──
 app.post("/api/trips/reservation_action", authenticateDriver, (req, res) => {
   const { reservation_id, status } = req.body;
+
+  console.log("📥 reservation_action reçu:", { reservation_id, status });
+
   if (!reservation_id || !status) {
     return res.status(400).json({ message: "Champs manquants" });
   }
 
+  if (!["accepted", "rejected"].includes(status)) {
+    return res.status(400).json({ message: "Statut invalide" });
+  }
+
   // 1. Récupérer la demande
-  db.query("SELECT * FROM demandes WHERE id = ?", [reservation_id], (err, results) => {
-    if (err) return res.status(500).json({ message: "Erreur serveur" });
-    if (results.length === 0) return res.status(404).json({ message: "Demande introuvable" });
+  db.query(
+    "SELECT * FROM demandes WHERE id = ?",
+    [reservation_id],
+    (err, results) => {
+      if (err) {
+        console.error("❌ Erreur DB:", err);
+        return res.status(500).json({ message: "Erreur serveur" });
+      }
 
-    const demande = results[0];
+      if (results.length === 0) {
+        return res.status(404).json({ message: "Demande introuvable" });
+      }
 
-    if (status === "accepted") {
-      // Récupérer le prix du trajet associé
-      db.query("SELECT prix FROM trajets WHERE id = ?", [demande.trip_id], (err2, tripResult) => {
-        if (err2) return res.status(500).json({ message: "Erreur récupération prix" });
-        const prix = tripResult[0]?.prix || 0;
+      const demande = results[0];
+      console.log("📋 Demande trouvée:", demande);
 
+      // 2. Si accepté → créer une réservation
+      if (status === "accepted") {
         db.query(
-          "INSERT INTO reservations (trip_id, user_id, places, prix) VALUES (?, ?, ?, ?)",
-          [demande.trip_id, demande.user_id, demande.places, prix],
-          (err3) => {
-            if (err3) return res.status(500).json({ message: "Erreur création réservation" });
-            db.query("UPDATE demandes SET status = 'accepted' WHERE id = ?", [reservation_id], (err4) => {
-              if (err4) return res.status(500).json({ message: "Erreur mise à jour demande" });
-              res.json({ success: true, message: "Réservation créée" });
-            });
+          `INSERT INTO reservations (trip_id, user_id, places, prix, status) 
+           VALUES (?, ?, ?, ?, 'accepted')`,
+          [demande.trip_id, demande.user_id, demande.places, demande.prix || 0],
+          (err2, result2) => {
+            if (err2) {
+              console.error("❌ Erreur création réservation:", err2);
+              return res.status(500).json({ message: "Erreur création réservation" });
+            }
+
+            // Mettre à jour le statut de la demande
+            db.query(
+              "UPDATE demandes SET status = 'accepted' WHERE id = ?",
+              [reservation_id],
+              (err3) => {
+                if (err3) {
+                  console.error("❌ Erreur update demande:", err3);
+                }
+                console.log("✅ Réservation acceptée et créée");
+                return res.json({ success: true, message: "Réservation acceptée" });
+              }
+            );
           }
         );
-      });
-    } else if (status === "rejected") {
-      db.query("UPDATE demandes SET status = 'rejected' WHERE id = ?", [reservation_id], (err2) => {
-        if (err2) return res.status(500).json({ message: "Erreur mise à jour" });
-        res.json({ success: true, message: "Demande refusée" });
-      });
-    } else {
-      res.status(400).json({ message: "Statut invalide" });
+      } 
+      // 3. Si refusé
+      else if (status === "rejected") {
+        db.query(
+          "UPDATE demandes SET status = 'rejected' WHERE id = ?",
+          [reservation_id],
+          (err2) => {
+            if (err2) {
+              console.error("❌ Erreur refus:", err2);
+              return res.status(500).json({ message: "Erreur lors du refus" });
+            }
+            console.log("✅ Demande refusée");
+            return res.json({ success: true, message: "Demande refusée" });
+          }
+        );
+      }
     }
-  });
+  );
 });
 
 // ── Modifier un trajet ──

@@ -88,67 +88,73 @@ export default function DriverReservationsScreen() {
     }
   };
 
-  // ✅ Accepter une réservation
-  const acceptReservation = async (id: number) => {
-    try {
-      const token = await getToken();
-      
-      const response = await fetch(`${API_URL}/api/trips/reservation_action`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          reservation_id: id,
-          status: "accepted"
-        })
-      });
+  // Dans Reservations.tsx, remplacer les fonctions acceptReservation et rejectReservation
 
-      const data = await response.json();
-      
-      if (response.ok) {
-        Alert.alert("✅ Succès", "Réservation acceptée");
-        fetchReservations(); // Rafraîchir la liste
-      } else {
-        Alert.alert("Erreur", data.message || "Action impossible");
-      }
-    } catch (error) {
-      console.log("❌ Erreur acceptation:", error);
-      Alert.alert("Erreur", "Action impossible");
+const acceptReservation = async (id: number) => {
+  try {
+    console.log("📤 Acceptation réservation:", id);
+    const token = await getToken();
+    
+    const response = await fetch(`${API_URL}/api/trips/reservation_action`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${token}`
+      },
+      body: JSON.stringify({
+        reservation_id: id,
+        status: "accepted"
+      })
+    });
+
+    const data = await response.json();
+    console.log("✅ Réponse acceptation:", data);
+    
+    if (response.ok) {
+      Alert.alert("✅ Succès", "Réservation acceptée");
+      await fetchReservations();
+    } else {
+      Alert.alert("Erreur", data.message || "Action impossible");
     }
-  };
+  } catch (error) {
+    console.log("❌ Erreur acceptation:", error);
+    Alert.alert("Erreur", "Action impossible");
+  } finally {
+  }
+};
 
-  // ✅ Refuser une réservation
-  const rejectReservation = async (id: number) => {
-    try {
-      const token = await getToken();
-      
-      const response = await fetch(`${API_URL}/api/trips/reservation_action`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          reservation_id: id,
-          status: "rejected"
-        })
-      });
+const rejectReservation = async (id: number) => {
+  try {
+    console.log("📤 Refus réservation:", id);
+    const token = await getToken();
+    
+    const response = await fetch(`${API_URL}/api/trips/reservation_action`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${token}`
+      },
+      body: JSON.stringify({
+        reservation_id: id,
+        status: "rejected"
+      })
+    });
 
-      const data = await response.json();
-      
-      if (response.ok) {
-        Alert.alert("Refusée", "Réservation refusée");
-        fetchReservations(); // Rafraîchir la liste
-      } else {
-        Alert.alert("Erreur", data.message || "Action impossible");
-      }
-    } catch (error) {
-      console.log("❌ Erreur refus:", error);
-      Alert.alert("Erreur", "Action impossible");
+    const data = await response.json();
+    console.log("✅ Réponse refus:", data);
+    
+    if (response.ok) {
+      Alert.alert("Refusée", "Réservation refusée");
+      await fetchReservations();
+    } else {
+      Alert.alert("Erreur", data.message || "Action impossible");
     }
-  };
+  } catch (error) {
+    console.log("❌ Erreur refus:", error);
+    Alert.alert("Erreur", "Action impossible");
+  } finally {
+  }
+};
 
   const callPassenger = (phone: string) => {
     if (phone) {

@@ -13,7 +13,7 @@ import * as SecureStore from "expo-secure-store";
 
 import { COLORS } from "../../src/styles/colors";
 import { globalStyles } from "../../src/styles/globalStyles";
-import { getDriverRequests, acceptReservation, rejectReservation } from "../../src/services/api";
+import { getDriverRequests, acceptReservation, rejectReservation, API_URL, getToken } from "../../src/services/api";
 
 type Request = {
   id: number;
@@ -30,6 +30,7 @@ export default function DriverRequestsScreen() {
   const [driverId, setDriverId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [requests, setRequests] = useState<Request[]>([]);
+  const [actionLoading, setActionLoading] = useState<number | null>(null);
 
   useEffect(() => {
     const init = async () => {
@@ -50,6 +51,7 @@ export default function DriverRequestsScreen() {
     try {
       setLoading(true);
       const data = await getDriverRequests(id);
+      console.log("📥 Demandes reçues:", JSON.stringify(data));
       setRequests(Array.isArray(data) ? data : []);
     } catch (error) {
       console.log("❌ DRIVER REQUESTS ERROR", error);
@@ -60,22 +62,34 @@ export default function DriverRequestsScreen() {
   };
 
   const handleAccept = async (id: number) => {
+    setActionLoading(id);
     try {
-      await acceptReservation(id);
+      console.log("📤 Acceptation de la demande:", id);
+      const result = await acceptReservation(id);
+      console.log("✅ Réponse acceptation:", result);
       Alert.alert("✅ Succès", "Réservation acceptée");
-      if (driverId) fetchRequests(driverId);
-    } catch (e) {
-      Alert.alert("Erreur", "Action impossible");
+      if (driverId) await fetchRequests(driverId);
+    } catch (e: any) {
+      console.log("❌ Erreur acceptation:", e);
+      Alert.alert("Erreur", e.message || "Action impossible");
+    } finally {
+      setActionLoading(null);
     }
   };
 
   const handleReject = async (id: number) => {
+    setActionLoading(id);
     try {
-      await rejectReservation(id);
+      console.log("📤 Refus de la demande:", id);
+      const result = await rejectReservation(id);
+      console.log("✅ Réponse refus:", result);
       Alert.alert("Refusée", "Réservation refusée");
-      if (driverId) fetchRequests(driverId);
-    } catch (e) {
-      Alert.alert("Erreur", "Action impossible");
+      if (driverId) await fetchRequests(driverId);
+    } catch (e: any) {
+      console.log("❌ Erreur refus:", e);
+      Alert.alert("Erreur", e.message || "Action impossible");
+    } finally {
+      setActionLoading(null);
     }
   };
 
@@ -91,11 +105,27 @@ export default function DriverRequestsScreen() {
       <View style={styles.actions}>
         {item.status === "pending" && (
           <>
-            <TouchableOpacity style={styles.accept} onPress={() => handleAccept(item.id)}>
-              <Text style={styles.actionText}>✓ Accepter</Text>
+            <TouchableOpacity 
+              style={styles.accept} 
+              onPress={() => handleAccept(item.id)}
+              disabled={actionLoading === item.id}
+            >
+              {actionLoading === item.id ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Text style={styles.actionText}>✓ Accepter</Text>
+              )}
             </TouchableOpacity>
-            <TouchableOpacity style={styles.reject} onPress={() => handleReject(item.id)}>
-              <Text style={styles.actionText}>✕ Refuser</Text>
+            <TouchableOpacity 
+              style={styles.reject} 
+              onPress={() => handleReject(item.id)}
+              disabled={actionLoading === item.id}
+            >
+              {actionLoading === item.id ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Text style={styles.actionText}>✕ Refuser</Text>
+              )}
             </TouchableOpacity>
           </>
         )}
@@ -141,9 +171,9 @@ const styles = StyleSheet.create({
   card: { backgroundColor: "#fff", borderRadius: 14, padding: 16, marginBottom: 14 },
   route: { fontSize: 16, fontWeight: "700", marginBottom: 8, color: "#111" },
   info: { fontSize: 14, color: "#555", marginBottom: 4 },
-  actions: { flexDirection: "row", justifyContent: "space-between", marginTop: 14 },
-  accept: { backgroundColor: COLORS.success, paddingVertical: 10, paddingHorizontal: 24, borderRadius: 10 },
-  reject: { backgroundColor: COLORS.danger, paddingVertical: 10, paddingHorizontal: 24, borderRadius: 10 },
+  actions: { flexDirection: "row", justifyContent: "space-between", marginTop: 14, gap: 10 },
+  accept: { backgroundColor: COLORS.success, paddingVertical: 10, paddingHorizontal: 24, borderRadius: 10, flex: 1, alignItems: "center" },
+  reject: { backgroundColor: COLORS.danger, paddingVertical: 10, paddingHorizontal: 24, borderRadius: 10, flex: 1, alignItems: "center" },
   actionText: { color: "#fff", fontWeight: "600" },
-  statusText: { fontSize: 14, fontWeight: "600", textAlign: "center", paddingVertical: 10 }
+  statusText: { fontSize: 14, fontWeight: "600", textAlign: "center", paddingVertical: 10, flex: 1 }
 });

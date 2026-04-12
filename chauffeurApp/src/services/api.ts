@@ -145,17 +145,27 @@ export async function getTripReservations(tripId: number) {
   return fetchWithAuth(`/api/trips/reservations?trip_id=${tripId}`);
 }
 
+// services/api.ts - Vérifier ces fonctions
+
 export async function acceptReservation(reservationId: number) {
+  console.log("📤 acceptReservation ID:", reservationId);
   return fetchWithAuth("/api/trips/reservation_action", {
     method: "POST",
-    body: JSON.stringify({ reservation_id: reservationId, status: "accepted" })
+    body: JSON.stringify({ 
+      reservation_id: reservationId, 
+      status: "accepted" 
+    })
   });
 }
 
 export async function rejectReservation(reservationId: number) {
+  console.log("📤 rejectReservation ID:", reservationId);
   return fetchWithAuth("/api/trips/reservation_action", {
     method: "POST",
-    body: JSON.stringify({ reservation_id: reservationId, status: "rejected" })
+    body: JSON.stringify({ 
+      reservation_id: reservationId, 
+      status: "rejected" 
+    })
   });
 }
 
