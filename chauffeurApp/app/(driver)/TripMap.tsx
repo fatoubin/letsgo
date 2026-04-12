@@ -38,7 +38,7 @@ const SENEGAL_CITIES: { [key: string]: Coordinates } = {
   thiès: { latitude: 14.7910, longitude: -16.9259 },
   touba: { latitude: 14.8575, longitude: -15.8766 },
   mbour: { latitude: 14.4056, longitude: -16.9647 },
-  "saint louis": { latitude: 16.0283, longitude: -16.5000 },
+  "saint-louis": { latitude: 16.0283, longitude: -16.5000 },
   kaolack: { latitude: 14.1522, longitude: -16.0727 },
   ziguinchor: { latitude: 12.5708, longitude: -16.2694 },
   diourbel: { latitude: 14.6479, longitude: -16.2438 },
@@ -200,7 +200,7 @@ export default function DriverTripMapScreen() {
       
       // Vérifier le cache
       if (geocodingCache[destName]) {
-        console.log("✅ Cache trouvé pour:", destName);
+        console.log("✅ Caches trouvé pour:", destName);
         setEndPoint(geocodingCache[destName]);
         geocodingDone.current = true;
         setLoading(false);
