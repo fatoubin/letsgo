@@ -255,6 +255,9 @@ export async function annulerReservation(reservationId: number) {
     method: "DELETE",  // ← bien DELETE
   });
 }
+export async function getMesReservationsInterurbaines() {
+  return fetchWithAuth("/api/client/mes-reservations-interurbaines");
+}
 // ==============================
 // 🔍 TEST DE CONNEXION
 // ==============================
