@@ -1199,7 +1199,10 @@ app.post("/api/interurbain/reserver", authenticate, (req, res) => {
   );
 });
 // ── Récupérer les réservations interurbaines du client ──
+// ── Récupérer les réservations interurbaines du client ──
 app.get("/api/client/mes-reservations-interurbaines", authenticate, (req, res) => {
+  console.log("📋 Récupération réservations interurbaines pour user:", req.user.id);
+  
   const sql = `
     SELECT 
       ri.id,
@@ -1209,7 +1212,6 @@ app.get("/api/client/mes-reservations-interurbaines", authenticate, (req, res) =
       ri.date_reservation,
       hi.heure_depart,
       hi.heure_arrivee,
-      l.prix,
       vd.nom as ville_depart,
       va.nom as ville_arrivee,
       gd.nom as gare_depart,
@@ -1227,9 +1229,10 @@ app.get("/api/client/mes-reservations-interurbaines", authenticate, (req, res) =
   
   db.query(sql, [req.user.id], (err, results) => {
     if (err) {
-      console.error("❌ Erreur réservations interurbaines:", err);
-      return res.status(500).json({ message: "Erreur serveur" });
+      console.error("❌ Erreur SQL:", err);
+      return res.status(500).json({ message: "Erreur serveur", detail: err.message });
     }
+    console.log(`✅ ${results.length} réservations interurbaines trouvées`);
     res.json(results);
   });
 });
