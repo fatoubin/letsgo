@@ -253,6 +253,7 @@ app.delete("/api/client/demandes/:id", authenticate, (req, res) => {
 });
 // ── Récupérer les réservations du client ──
 
+// ── Récupérer les réservations du client (covoiturage) avec infos chauffeur et position ──
 app.get("/api/client/mes-reservations", authenticate, (req, res) => {
   const sql = `
     SELECT 
@@ -260,19 +261,34 @@ app.get("/api/client/mes-reservations", authenticate, (req, res) => {
       r.places,
       r.prix,
       r.created_at,
+      r.status as reservation_status,
+      t.id as trip_id,
       t.depart,
       t.destination,
       t.heure,
-      u.nom as conducteur_nom,
-      u.prenom as conducteur_prenom
+      u.id as chauffeur_id,
+      u.nom as chauffeur_nom,
+      u.prenom as chauffeur_prenom,
+      u.telephone as chauffeur_telephone,
+      d.vehicle_type,
+      d.vehicle_plate,
+      d.seats as vehicle_seats,
+      d.latitude as chauffeur_lat,
+      d.longitude as chauffeur_lng,
+      d.is_online
     FROM reservations r
     JOIN trajets t ON r.trip_id = t.id
     JOIN users u ON t.user_id = u.id
+    LEFT JOIN drivers d ON d.user_id = u.id
     WHERE r.user_id = ?
     ORDER BY r.created_at DESC
   `;
+  
   db.query(sql, [req.user.id], (err, results) => {
-    if (err) return res.status(500).json({ message: "Erreur serveur" });
+    if (err) {
+      console.error("❌ Erreur récupération réservations:", err);
+      return res.status(500).json({ message: "Erreur serveur" });
+    }
     res.json(results);
   });
 });
@@ -607,17 +623,24 @@ app.get("/api/driver/history", authenticateDriver, (req, res) => {
 // ── Mise à jour position chauffeur ──
 // Note: vous devez avoir les colonnes lat et lng dans la table drivers pour que cette route soit complète.
 // Actuellement elle ne met à jour que is_online = true.
+// ── Mise à jour position chauffeur ──
 app.post("/api/driver/update_location", authenticateDriver, (req, res) => {
   const { driver_id, lat, lng } = req.body;
-  if (!driver_id || lat === undefined || lng === undefined)
+  
+  if (!driver_id || lat === undefined || lng === undefined) {
     return res.status(400).json({ message: "driver_id, lat et lng requis" });
+  }
 
   db.query(
-    "UPDATE drivers SET is_online = true WHERE id = ?",
-    [driver_id],
-    (err) => {
-      if (err) return res.status(500).json({ message: "Erreur mise à jour position" });
-      res.json({ message: "Position mise à jour" });
+    "UPDATE drivers SET is_online = true, latitude = ?, longitude = ? WHERE id = ?",
+    [lat, lng, driver_id],
+    (err, result) => {
+      if (err) {
+        console.error("❌ Erreur mise à jour position:", err);
+        return res.status(500).json({ message: "Erreur mise à jour position" });
+      }
+      console.log(`📍 Position mise à jour: chauffeur ${driver_id} -> lat: ${lat}, lng: ${lng}`);
+      res.json({ message: "Position mise à jour", lat, lng });
     }
   );
 });
