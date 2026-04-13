@@ -1,7 +1,7 @@
-import { View, Text, FlatList, StyleSheet, ActivityIndicator } from "react-native";
+import { View, Text, FlatList, StyleSheet, ActivityIndicator, TouchableOpacity, Alert } from "react-native";
 import { useFocusEffect } from "expo-router";
 import { useCallback, useState } from "react";
-import { getMesReservationsInterurbaines } from "../../lib/api";
+import { getMesReservationsInterurbaines, annulerReservationInterurbaine, ajouterPlacesReservationInterurbaine } from "../../lib/api";
 import { Ionicons } from "@expo/vector-icons";
 
 type ReservationInterurbaine = {
@@ -21,6 +21,7 @@ type ReservationInterurbaine = {
 export default function MesReservationsInterurbaines() {
   const [reservations, setReservations] = useState<ReservationInterurbaine[]>([]);
   const [loading, setLoading] = useState(true);
+  const [actionLoading, setActionLoading] = useState<number | null>(null);
 
   const loadReservations = async () => {
     try {
@@ -39,6 +40,58 @@ export default function MesReservationsInterurbaines() {
       loadReservations();
     }, [])
   );
+
+  const handleAnnuler = (reservation: ReservationInterurbaine) => {
+    Alert.alert(
+      "Annuler la réservation",
+      `Voulez-vous vraiment annuler votre réservation pour ${reservation.ville_depart} → ${reservation.ville_arrivee} ?`,
+      [
+        { text: "Non", style: "cancel" },
+        {
+          text: "Oui, annuler",
+          style: "destructive",
+          onPress: async () => {
+            setActionLoading(reservation.id);
+            try {
+              await annulerReservationInterurbaine(reservation.id);
+              Alert.alert("Succès", "Réservation annulée");
+              loadReservations();
+            } catch (error) {
+              Alert.alert("Erreur", "Impossible d'annuler");
+            } finally {
+              setActionLoading(null);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleAjouterPlaces = (reservation: ReservationInterurbaine) => {
+    Alert.alert(
+      "Ajouter des places",
+      "Combien de places supplémentaires voulez-vous ajouter ?",
+      [
+        { text: "Annuler", style: "cancel" },
+        { text: "1 place", onPress: () => ajouterPlaces(reservation.id, 1) },
+        { text: "2 places", onPress: () => ajouterPlaces(reservation.id, 2) },
+        { text: "3 places", onPress: () => ajouterPlaces(reservation.id, 3) },
+      ]
+    );
+  };
+
+  const ajouterPlaces = async (reservationId: number, places: number) => {
+    setActionLoading(reservationId);
+    try {
+      const result = await ajouterPlacesReservationInterurbaine(reservationId, places);
+      Alert.alert("Succès", `${places} place(s) ajoutée(s) !`);
+      loadReservations();
+    } catch (error) {
+      Alert.alert("Erreur", "Impossible d'ajouter des places");
+    } finally {
+      setActionLoading(null);
+    }
+  };
 
   const formatDate = (dateStr: string) => {
     const date = new Date(dateStr);
@@ -113,6 +166,33 @@ export default function MesReservationsInterurbaines() {
             <View style={styles.dateInfo}>
               <Ionicons name="calendar-outline" size={12} color="#9AA4BF" />
               <Text style={styles.dateText}>Réservé le {formatDate(item.date_reservation)}</Text>
+            </View>
+
+            {/* Boutons d'action */}
+            <View style={styles.actionButtons}>
+              <TouchableOpacity 
+                style={styles.addButton}
+                onPress={() => handleAjouterPlaces(item)}
+                disabled={actionLoading === item.id}
+              >
+                {actionLoading === item.id ? (
+                  <ActivityIndicator size="small" color="#4ADE80" />
+                ) : (
+                  <>
+                    <Ionicons name="add-circle-outline" size={18} color="#4ADE80" />
+                    <Text style={styles.addButtonText}>Ajouter places</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+
+              <TouchableOpacity 
+                style={styles.cancelButton}
+                onPress={() => handleAnnuler(item)}
+                disabled={actionLoading === item.id}
+              >
+                <Ionicons name="close-circle-outline" size={18} color="#ef4444" />
+                <Text style={styles.cancelButtonText}>Annuler</Text>
+              </TouchableOpacity>
             </View>
           </View>
         )}
@@ -224,5 +304,42 @@ const styles = StyleSheet.create({
   dateText: {
     color: "#6B7280",
     fontSize: 10,
+  },
+  actionButtons: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    gap: 12,
+    marginTop: 12,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: "#2A3655",
+  },
+  addButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#10B98120",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    gap: 4,
+  },
+  addButtonText: {
+    color: "#4ADE80",
+    fontSize: 12,
+    fontWeight: "500",
+  },
+  cancelButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#EF444420",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    gap: 4,
+  },
+  cancelButtonText: {
+    color: "#ef4444",
+    fontSize: 12,
+    fontWeight: "500",
   },
 });

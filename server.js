@@ -1236,6 +1236,70 @@ app.get("/api/client/mes-reservations-interurbaines", authenticate, (req, res) =
     res.json(results);
   });
 });
+// ── Supprimer une réservation interurbaine ──
+app.delete("/api/client/reservations-interurbaines/:id", authenticate, (req, res) => {
+  const reservationId = req.params.id;
+  
+  console.log("🗑️ Suppression réservation interurbaine:", reservationId);
+  
+  db.query(
+    "DELETE FROM reservations_interurbaines WHERE id = ? AND user_id = ?",
+    [reservationId, req.user.id],
+    (err, result) => {
+      if (err) {
+        console.error("❌ Erreur suppression:", err);
+        return res.status(500).json({ message: "Erreur serveur" });
+      }
+      if (result.affectedRows === 0) {
+        return res.status(404).json({ message: "Réservation non trouvée" });
+      }
+      res.json({ message: "Réservation annulée avec succès" });
+    }
+  );
+});
+
+// ── Ajouter des places à une réservation interurbaine ──
+app.put("/api/client/reservations-interurbaines/:id/ajouter-places", authenticate, (req, res) => {
+  const reservationId = req.params.id;
+  const { places_supplementaires } = req.body;
+  
+  if (!places_supplementaires || places_supplementaires <= 0) {
+    return res.status(400).json({ message: "Nombre de places valide requis" });
+  }
+  
+  console.log("➕ Ajout de places:", { reservationId, places_supplementaires });
+  
+  // Récupérer la réservation et le prix
+  db.query(
+    `SELECT ri.*, hi.ligne_id, l.prix 
+     FROM reservations_interurbaines ri
+     JOIN horaires_interurbains hi ON ri.horaire_id = hi.id
+     JOIN lignes_interurbaines l ON hi.ligne_id = l.id
+     WHERE ri.id = ? AND ri.user_id = ?`,
+    [reservationId, req.user.id],
+    (err, results) => {
+      if (err) return res.status(500).json({ message: "Erreur serveur" });
+      if (results.length === 0) return res.status(404).json({ message: "Réservation non trouvée" });
+      
+      const reservation = results[0];
+      const nouveau_total_places = reservation.places + places_supplementaires;
+      const nouveau_prix_total = reservation.prix_total + (reservation.prix * places_supplementaires);
+      
+      db.query(
+        "UPDATE reservations_interurbaines SET places = ?, prix_total = ? WHERE id = ? AND user_id = ?",
+        [nouveau_total_places, nouveau_prix_total, reservationId, req.user.id],
+        (err2) => {
+          if (err2) return res.status(500).json({ message: "Erreur mise à jour" });
+          res.json({ 
+            message: `${places_supplementaires} place(s) ajoutée(s)`, 
+            places: nouveau_total_places,
+            prix_total: nouveau_prix_total
+          });
+        }
+      );
+    }
+  );
+});
 // ================= TEST =================
 app.get("/api/test", (req, res) => {
   db.query("SELECT 1+1 AS result", (err, results) => {
