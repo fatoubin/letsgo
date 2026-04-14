@@ -253,26 +253,45 @@ app.delete("/api/client/demandes/:id", authenticate, (req, res) => {
 });
 // ── Récupérer les réservations du client ──
 
+// ── Récupérer les réservations du client (covoiturage) avec infos chauffeur et position ──
 app.get("/api/client/mes-reservations", authenticate, (req, res) => {
+  console.log("🔍 Récupération réservations pour user:", req.user.id);
+  
   const sql = `
     SELECT 
       r.id,
       r.places,
       r.prix,
       r.created_at,
+      r.status as reservation_status,
+      t.id as trip_id,
       t.depart,
       t.destination,
       t.heure,
-      u.nom as conducteur_nom,
-      u.prenom as conducteur_prenom
+      u.id as chauffeur_id,
+      u.nom as chauffeur_nom,
+      u.prenom as chauffeur_prenom,
+      u.telephone as chauffeur_telephone,
+      d.vehicle_type,
+      d.vehicle_plate,
+      d.seats as vehicle_seats,
+      d.latitude as chauffeur_lat,
+      d.longitude as chauffeur_lng,
+      d.is_online
     FROM reservations r
     JOIN trajets t ON r.trip_id = t.id
     JOIN users u ON t.user_id = u.id
+    LEFT JOIN drivers d ON d.user_id = u.id
     WHERE r.user_id = ?
     ORDER BY r.created_at DESC
   `;
+  
   db.query(sql, [req.user.id], (err, results) => {
-    if (err) return res.status(500).json({ message: "Erreur serveur" });
+    if (err) {
+      console.error("❌ Erreur SQL:", err);
+      return res.status(500).json({ message: "Erreur serveur", detail: err.message });
+    }
+    console.log(`✅ ${results.length} réservations trouvées`);
     res.json(results);
   });
 });
@@ -607,17 +626,24 @@ app.get("/api/driver/history", authenticateDriver, (req, res) => {
 // ── Mise à jour position chauffeur ──
 // Note: vous devez avoir les colonnes lat et lng dans la table drivers pour que cette route soit complète.
 // Actuellement elle ne met à jour que is_online = true.
+// ── Mise à jour position chauffeur ──
 app.post("/api/driver/update_location", authenticateDriver, (req, res) => {
   const { driver_id, lat, lng } = req.body;
-  if (!driver_id || lat === undefined || lng === undefined)
+  
+  if (!driver_id || lat === undefined || lng === undefined) {
     return res.status(400).json({ message: "driver_id, lat et lng requis" });
+  }
 
   db.query(
-    "UPDATE drivers SET is_online = true WHERE id = ?",
-    [driver_id],
-    (err) => {
-      if (err) return res.status(500).json({ message: "Erreur mise à jour position" });
-      res.json({ message: "Position mise à jour" });
+    "UPDATE drivers SET is_online = true, latitude = ?, longitude = ? WHERE id = ?",
+    [lat, lng, driver_id],
+    (err, result) => {
+      if (err) {
+        console.error("❌ Erreur mise à jour position:", err);
+        return res.status(500).json({ message: "Erreur mise à jour position" });
+      }
+      console.log(`📍 Position mise à jour: chauffeur ${driver_id} -> lat: ${lat}, lng: ${lng}`);
+      res.json({ message: "Position mise à jour", lat, lng });
     }
   );
 });
@@ -1192,6 +1218,108 @@ app.post("/api/interurbain/reserver", authenticate, (req, res) => {
           res.status(201).json({ 
             message: "Réservation effectuée avec succès", 
             reservationId: result.insertId 
+          });
+        }
+      );
+    }
+  );
+});
+// ── Récupérer les réservations interurbaines du client ──
+// ── Récupérer les réservations interurbaines du client ──
+app.get("/api/client/mes-reservations-interurbaines", authenticate, (req, res) => {
+  console.log("📋 Récupération réservations interurbaines pour user:", req.user.id);
+  
+  const sql = `
+    SELECT 
+      ri.id,
+      ri.places,
+      ri.prix_total,
+      ri.statut,
+      ri.date_reservation,
+      hi.heure_depart,
+      hi.heure_arrivee,
+      vd.nom as ville_depart,
+      va.nom as ville_arrivee,
+      gd.nom as gare_depart,
+      ga.nom as gare_arrivee
+    FROM reservations_interurbaines ri
+    JOIN horaires_interurbains hi ON ri.horaire_id = hi.id
+    JOIN lignes_interurbaines l ON hi.ligne_id = l.id
+    JOIN villes vd ON l.ville_depart_id = vd.id
+    JOIN villes va ON l.ville_arrivee_id = va.id
+    LEFT JOIN gares gd ON l.gare_depart_id = gd.id
+    LEFT JOIN gares ga ON l.gare_arrivee_id = ga.id
+    WHERE ri.user_id = ?
+    ORDER BY ri.date_reservation DESC
+  `;
+  
+  db.query(sql, [req.user.id], (err, results) => {
+    if (err) {
+      console.error("❌ Erreur SQL:", err);
+      return res.status(500).json({ message: "Erreur serveur", detail: err.message });
+    }
+    console.log(`✅ ${results.length} réservations interurbaines trouvées`);
+    res.json(results);
+  });
+});
+// ── Supprimer une réservation interurbaine ──
+app.delete("/api/client/reservations-interurbaines/:id", authenticate, (req, res) => {
+  const reservationId = req.params.id;
+  
+  console.log("🗑️ Suppression réservation interurbaine:", reservationId);
+  
+  db.query(
+    "DELETE FROM reservations_interurbaines WHERE id = ? AND user_id = ?",
+    [reservationId, req.user.id],
+    (err, result) => {
+      if (err) {
+        console.error("❌ Erreur suppression:", err);
+        return res.status(500).json({ message: "Erreur serveur" });
+      }
+      if (result.affectedRows === 0) {
+        return res.status(404).json({ message: "Réservation non trouvée" });
+      }
+      res.json({ message: "Réservation annulée avec succès" });
+    }
+  );
+});
+
+// ── Ajouter des places à une réservation interurbaine ──
+app.put("/api/client/reservations-interurbaines/:id/ajouter-places", authenticate, (req, res) => {
+  const reservationId = req.params.id;
+  const { places_supplementaires } = req.body;
+  
+  if (!places_supplementaires || places_supplementaires <= 0) {
+    return res.status(400).json({ message: "Nombre de places valide requis" });
+  }
+  
+  console.log("➕ Ajout de places:", { reservationId, places_supplementaires });
+  
+  // Récupérer la réservation et le prix
+  db.query(
+    `SELECT ri.*, hi.ligne_id, l.prix 
+     FROM reservations_interurbaines ri
+     JOIN horaires_interurbains hi ON ri.horaire_id = hi.id
+     JOIN lignes_interurbaines l ON hi.ligne_id = l.id
+     WHERE ri.id = ? AND ri.user_id = ?`,
+    [reservationId, req.user.id],
+    (err, results) => {
+      if (err) return res.status(500).json({ message: "Erreur serveur" });
+      if (results.length === 0) return res.status(404).json({ message: "Réservation non trouvée" });
+      
+      const reservation = results[0];
+      const nouveau_total_places = reservation.places + places_supplementaires;
+      const nouveau_prix_total = reservation.prix_total + (reservation.prix * places_supplementaires);
+      
+      db.query(
+        "UPDATE reservations_interurbaines SET places = ?, prix_total = ? WHERE id = ? AND user_id = ?",
+        [nouveau_total_places, nouveau_prix_total, reservationId, req.user.id],
+        (err2) => {
+          if (err2) return res.status(500).json({ message: "Erreur mise à jour" });
+          res.json({ 
+            message: `${places_supplementaires} place(s) ajoutée(s)`, 
+            places: nouveau_total_places,
+            prix_total: nouveau_prix_total
           });
         }
       );

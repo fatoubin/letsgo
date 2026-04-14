@@ -255,6 +255,21 @@ export async function annulerReservation(reservationId: number) {
     method: "DELETE",  // ← bien DELETE
   });
 }
+export async function getMesReservationsInterurbaines() {
+  return fetchWithAuth("/api/client/mes-reservations-interurbaines");
+}
+export async function annulerReservationInterurbaine(reservationId: number) {
+  return fetchWithAuth(`/api/client/reservations-interurbaines/${reservationId}`, {
+    method: "DELETE",
+  });
+}
+
+export async function ajouterPlacesReservationInterurbaine(reservationId: number, places_supplementaires: number) {
+  return fetchWithAuth(`/api/client/reservations-interurbaines/${reservationId}/ajouter-places`, {
+    method: "PUT",
+    body: JSON.stringify({ places_supplementaires }),
+  });
+}
 // ==============================
 // 🔍 TEST DE CONNEXION
 // ==============================
