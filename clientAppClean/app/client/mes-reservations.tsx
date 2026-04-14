@@ -1,8 +1,8 @@
-import { View, Text, FlatList, StyleSheet, ActivityIndicator, TouchableOpacity, Alert, Modal } from "react-native";
+import { View, Text, FlatList, StyleSheet, ActivityIndicator, TouchableOpacity, Alert, Modal, Linking } from "react-native";
 import { useFocusEffect } from "expo-router";
-import { useCallback, useState } from "react";
+import { useCallback, useState, useEffect } from "react";
 import { router } from "expo-router";
-import { getMesReservations } from "../../lib/api";
+import { getMesReservations, annulerReservation } from "../../lib/api";
 import { Ionicons } from "@expo/vector-icons";
 import MapView, { Marker, PROVIDER_GOOGLE } from "react-native-maps";
 
@@ -92,6 +92,29 @@ export default function MesReservations() {
   const handleSeeLocation = (reservation: Reservation) => {
     setSelectedReservation(reservation);
     setShowMap(true);
+  };
+
+  const handleAnnuler = (reservation: Reservation) => {
+    Alert.alert(
+      "Annuler la réservation",
+      `Voulez-vous vraiment annuler votre réservation pour ${reservation.depart} → ${reservation.destination} ?`,
+      [
+        { text: "Non", style: "cancel" },
+        {
+          text: "Oui, annuler",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await annulerReservation(reservation.id);
+              Alert.alert("Succès", "Réservation annulée");
+              loadReservations();
+            } catch (error) {
+              Alert.alert("Erreur", "Impossible d'annuler la réservation");
+            }
+          },
+        },
+      ]
+    );
   };
 
   const formatDate = (dateStr: string) => {
@@ -212,6 +235,13 @@ export default function MesReservations() {
                       <Text style={styles.actionButtonText}>Voir position</Text>
                     </TouchableOpacity>
                   )}
+                  <TouchableOpacity 
+                    style={styles.cancelButton}
+                    onPress={() => handleAnnuler(item)}
+                  >
+                    <Ionicons name="close-circle-outline" size={16} color="#fff" />
+                    <Text style={styles.actionButtonText}>Annuler</Text>
+                  </TouchableOpacity>
                 </View>
               </View>
             )}
@@ -386,6 +416,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: 10,
     marginTop: 10,
+    flexWrap: "wrap",
   },
   callButton: {
     flexDirection: "row",
@@ -400,6 +431,15 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "#10B981",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    gap: 4,
+  },
+  cancelButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#EF4444",
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 8,
