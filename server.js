@@ -255,6 +255,8 @@ app.delete("/api/client/demandes/:id", authenticate, (req, res) => {
 
 // ── Récupérer les réservations du client (covoiturage) avec infos chauffeur et position ──
 app.get("/api/client/mes-reservations", authenticate, (req, res) => {
+  console.log("🔍 Récupération réservations pour user:", req.user.id);
+  
   const sql = `
     SELECT 
       r.id,
@@ -286,9 +288,10 @@ app.get("/api/client/mes-reservations", authenticate, (req, res) => {
   
   db.query(sql, [req.user.id], (err, results) => {
     if (err) {
-      console.error("❌ Erreur récupération réservations:", err);
-      return res.status(500).json({ message: "Erreur serveur" });
+      console.error("❌ Erreur SQL:", err);
+      return res.status(500).json({ message: "Erreur serveur", detail: err.message });
     }
+    console.log(`✅ ${results.length} réservations trouvées`);
     res.json(results);
   });
 });
