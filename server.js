@@ -653,10 +653,11 @@ app.post("/api/driver/update_location", authenticateDriver, (req, res) => {
 });
 
 // Dans server.js, vérifiez que cette route est correcte
+// ── Accepter / Refuser une réservation (version corrigée) ──
 app.post("/api/trips/reservation_action", authenticateDriver, (req, res) => {
   const { reservation_id, status } = req.body;
 
-  console.log("📥 [SERVER] reservation_action reçu:", { reservation_id, status });
+  console.log("📥 Acceptation réservation reçue:", { reservation_id, status });
 
   if (!reservation_id || !status) {
     return res.status(400).json({ message: "Champs manquants" });
@@ -666,6 +667,25 @@ app.post("/api/trips/reservation_action", authenticateDriver, (req, res) => {
     return res.status(400).json({ message: "Statut invalide" });
   }
 
+  // Mettre à jour le statut de la réservation
+  db.query(
+    "UPDATE reservations SET status = ? WHERE id = ?",
+    [status, reservation_id],
+    (err, result) => {
+      if (err) {
+        console.error("❌ Erreur mise à jour réservation:", err);
+        return res.status(500).json({ message: "Erreur serveur" });
+      }
+
+      if (result.affectedRows === 0) {
+        return res.status(404).json({ message: "Réservation non trouvée" });
+      }
+
+      console.log(`✅ Réservation ${reservation_id} passée en ${status}`);
+      res.json({ success: true, message: `Réservation ${status}` });
+    }
+  );
+});
   // Récupérer la demande
   db.query(
     "SELECT * FROM demandes WHERE id = ?",
