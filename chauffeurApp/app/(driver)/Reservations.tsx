@@ -48,7 +48,7 @@ export default function DriverReservationsScreen() {
     fetchReservations();
   }, [tripId]);
 
-  // ✅ Fonction pour récupérer les réservations
+  // ✅ Fonction pour récupérer les réservations des cliet
   const fetchReservations = async () => {
     try {
       setLoading(true);

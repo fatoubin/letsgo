@@ -149,7 +149,7 @@ export default function DriverRequestsScreen() {
 
   return (
     <View style={globalStyles.screen}>
-      <Text style={styles.title}>Demandes de réservation</Text>
+      <Text style={styles.title}>Demandes de réservations</Text>
       {requests.length === 0 ? (
         <Text style={styles.empty}>Aucune demande pour le moment.</Text>
       ) : (

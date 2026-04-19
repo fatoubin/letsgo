@@ -16,13 +16,7 @@ import { useRouter, useLocalSearchParams } from "expo-router";
 import { COLORS } from "../../src/styles/colors";
 import { globalStyles } from "../../src/styles/globalStyles";
 import PrimaryButton from "../../src/components/PrimaryButton";
-import {
-  acceptReservation,
-  rejectReservation,
-  deleteTrip,
-  getToken
-} from "../../src/services/api";
-import { API_URL } from "../../src/services/api";
+import { deleteTrip, getToken, API_URL } from "../../src/services/api";
 
 type Reservation = {
   id: number;
@@ -43,13 +37,13 @@ export default function DriverTripDetailScreen() {
 
   const [reservations, setReservations] = useState<Reservation[]>([]);
   const [loading, setLoading] = useState(true);
+  const [actionLoading, setActionLoading] = useState<number | null>(null);
 
   useEffect(() => {
     if (!trip?.id) { setLoading(false); return; }
     fetchReservations();
   }, []);
 
-  // ── ✅ CORRECTION : Filtrer par trip_id ──
   const fetchReservations = async () => {
     try {
       const token = await getToken();
@@ -60,7 +54,6 @@ export default function DriverTripDetailScreen() {
         return;
       }
 
-      // ✅ Passer trip_id en query param pour filtrer les réservations du trajet
       const res = await fetch(`${API_URL}/api/trips/reservations?trip_id=${trip.id}`, {
         method: "GET",
         headers: {
@@ -80,23 +73,75 @@ export default function DriverTripDetailScreen() {
     }
   };
 
+  // ✅ Fonction ACCEPTER corrigée
   const handleAccept = async (id: number) => {
+    setActionLoading(id);
     try {
-      await acceptReservation(id);
-      Alert.alert("✅ Succès", "Réservation acceptée");
-      fetchReservations();
-    } catch (e) {
+      console.log("📤 Acceptation réservation:", id);
+      const token = await getToken();
+      
+      const response = await fetch(`${API_URL}/api/trips/reservation_action`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          reservation_id: id,
+          status: "accepted"
+        })
+      });
+
+      const data = await response.json();
+      console.log("✅ Réponse acceptation:", data);
+      
+      if (response.ok) {
+        Alert.alert("✅ Succès", "Réservation acceptée");
+        await fetchReservations();
+      } else {
+        Alert.alert("Erreur", data.message || "Action impossible");
+      }
+    } catch (error) {
+      console.log("❌ Erreur acceptation:", error);
       Alert.alert("Erreur", "Action impossible");
+    } finally {
+      setActionLoading(null);
     }
   };
 
+  // ✅ Fonction REFUSER corrigée
   const handleReject = async (id: number) => {
+    setActionLoading(id);
     try {
-      await rejectReservation(id);
-      Alert.alert("Refusée", "Réservation refusée");
-      fetchReservations();
-    } catch (e) {
+      console.log("📤 Refus réservation:", id);
+      const token = await getToken();
+      
+      const response = await fetch(`${API_URL}/api/trips/reservation_action`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          reservation_id: id,
+          status: "rejected"
+        })
+      });
+
+      const data = await response.json();
+      console.log("✅ Réponse refus:", data);
+      
+      if (response.ok) {
+        Alert.alert("Refusée", "Réservation refusée");
+        await fetchReservations();
+      } else {
+        Alert.alert("Erreur", data.message || "Action impossible");
+      }
+    } catch (error) {
+      console.log("❌ Erreur refus:", error);
       Alert.alert("Erreur", "Action impossible");
+    } finally {
+      setActionLoading(null);
     }
   };
 
@@ -144,7 +189,6 @@ export default function DriverTripDetailScreen() {
 
       <Text style={styles.title}>Détails du trajet</Text>
 
-      {/* ── Infos trajet ── */}
       <View style={styles.card}>
         <Text style={styles.label}>Départ</Text>
         <Text style={styles.value}>{trip.depart}</Text>
@@ -192,7 +236,6 @@ export default function DriverTripDetailScreen() {
         })}
       />
 
-
       <PrimaryButton
         title="Voir les réservations"
         style={{ marginTop: 10 }}
@@ -203,13 +246,13 @@ export default function DriverTripDetailScreen() {
       />
 
       <Text style={styles.sectionTitle}>
-        Réservations ({reservations.length})
+        Demandes ({reservations.length})
       </Text>
 
       {loading ? (
         <ActivityIndicator color={COLORS.primary} style={{ marginTop: 20 }} />
       ) : reservations.length === 0 ? (
-        <Text style={styles.empty}>Aucune réservation pour ce trajet</Text>
+        <Text style={styles.empty}>Aucune demande pour ce trajet</Text>
       ) : (
         reservations.map((item) => (
           <View key={item.id.toString()} style={styles.reservationCard}>
@@ -238,15 +281,25 @@ export default function DriverTripDetailScreen() {
                   <TouchableOpacity
                     style={styles.accept}
                     onPress={() => handleAccept(item.id)}
+                    disabled={actionLoading === item.id}
                   >
-                    <Text style={styles.actionText}>✓ Accepter</Text>
+                    {actionLoading === item.id ? (
+                      <ActivityIndicator size="small" color="#fff" />
+                    ) : (
+                      <Text style={styles.actionText}>✓ Accepter</Text>
+                    )}
                   </TouchableOpacity>
 
                   <TouchableOpacity
                     style={styles.reject}
                     onPress={() => handleReject(item.id)}
+                    disabled={actionLoading === item.id}
                   >
-                    <Text style={styles.actionText}>✕ Refuser</Text>
+                    {actionLoading === item.id ? (
+                      <ActivityIndicator size="small" color="#fff" />
+                    ) : (
+                      <Text style={styles.actionText}>✕ Refuser</Text>
+                    )}
                   </TouchableOpacity>
                 </>
               )}
@@ -282,8 +335,8 @@ const styles = StyleSheet.create({
   rejected: { backgroundColor: COLORS.danger },
   callButton: { backgroundColor: COLORS.primary, paddingVertical: 6, paddingHorizontal: 14, borderRadius: 20 },
   callText: { color: "#fff", fontWeight: "600" },
-  accept: { backgroundColor: COLORS.success, paddingVertical: 6, paddingHorizontal: 12, borderRadius: 20 },
-  reject: { backgroundColor: COLORS.danger, paddingVertical: 6, paddingHorizontal: 12, borderRadius: 20 },
+  accept: { backgroundColor: COLORS.success, paddingVertical: 6, paddingHorizontal: 12, borderRadius: 20, flex: 1, alignItems: "center" },
+  reject: { backgroundColor: COLORS.danger, paddingVertical: 6, paddingHorizontal: 12, borderRadius: 20, flex: 1, alignItems: "center" },
   actionText: { color: "#fff", fontWeight: "600" },
   buttonRow: { flexDirection: "row", gap: 12, marginTop: 16 },
   editBtn: { flex: 1, backgroundColor: "#3B82F6", paddingVertical: 10, borderRadius: 10, alignItems: "center" },
