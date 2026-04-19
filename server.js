@@ -347,25 +347,29 @@ app.post("/api/client/reserver", authenticate, (req, res) => {
     );
   });
 });
-// ── Annuler une réservation ──
+
+// ── Annuler une réservation (covoiturage) ──
 app.delete("/api/client/reservations/:id", authenticate, (req, res) => {
   const reservationId = req.params.id;
   
-  console.log("🗑️ Suppression réservation", reservationId);
+  console.log("🗑️ Suppression réservation:", reservationId, "pour user:", req.user.id);
   
-  // Supprimer directement (sans restaurer les places pour simplifier)
   db.query(
     "DELETE FROM reservations WHERE id = ? AND user_id = ?",
     [reservationId, req.user.id],
     (err, result) => {
       if (err) {
-        console.error("❌ Erreur SQL:", err);
+        console.error("❌ Erreur suppression:", err);
         return res.status(500).json({ message: "Erreur serveur" });
       }
       if (result.affectedRows === 0) {
         return res.status(404).json({ message: "Réservation non trouvée" });
       }
-      res.json({ message: "Réservation annulée" });
+      
+      // Optionnel : remettre les places dans le trajet
+      // db.query("UPDATE trajets SET places = places + ? WHERE id = ?", [places, trip_id]);
+      
+      res.json({ message: "Réservation annulée avec succès" });
     }
   );
 });
