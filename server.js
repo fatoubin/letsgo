@@ -654,6 +654,7 @@ app.post("/api/driver/update_location", authenticateDriver, (req, res) => {
 
 // Dans server.js, vérifiez que cette route est correcte
 // ── Accepter / Refuser une réservation (version corrigée) ──
+// ── Accepter / Refuser une réservation ──
 app.post("/api/trips/reservation_action", authenticateDriver, (req, res) => {
   const { reservation_id, status } = req.body;
 
@@ -667,7 +668,6 @@ app.post("/api/trips/reservation_action", authenticateDriver, (req, res) => {
     return res.status(400).json({ message: "Statut invalide" });
   }
 
-  // Mettre à jour le statut de la réservation
   db.query(
     "UPDATE reservations SET status = ? WHERE id = ?",
     [status, reservation_id],
@@ -683,76 +683,6 @@ app.post("/api/trips/reservation_action", authenticateDriver, (req, res) => {
 
       console.log(`✅ Réservation ${reservation_id} passée en ${status}`);
       res.json({ success: true, message: `Réservation ${status}` });
-    }
-  );
-});
-  // Récupérer la demande
-  db.query(
-    "SELECT * FROM demandes WHERE id = ?",
-    [reservation_id],
-    (err, results) => {
-      if (err) {
-        console.error("❌ Erreur DB:", err);
-        return res.status(500).json({ message: "Erreur serveur" });
-      }
-
-      if (results.length === 0) {
-        return res.status(404).json({ message: "Demande introuvable" });
-      }
-
-      const demande = results[0];
-      console.log("📋 Demande trouvée:", demande);
-
-      if (status === "accepted") {
-        // Vérifier si une réservation existe déjà
-        db.query(
-          "SELECT * FROM reservations WHERE trip_id = ? AND user_id = ?",
-          [demande.trip_id, demande.user_id],
-          (err2, existing) => {
-            if (existing && existing.length > 0) {
-              // Mettre à jour la réservation existante
-              db.query(
-                "UPDATE reservations SET places = ?, status = 'accepted' WHERE trip_id = ? AND user_id = ?",
-                [demande.places, demande.trip_id, demande.user_id],
-                (err3) => {
-                  if (err3) console.error("Erreur update reservation:", err3);
-                }
-              );
-            } else {
-              // Créer une nouvelle réservation
-              db.query(
-                "INSERT INTO reservations (trip_id, user_id, places, prix, status) VALUES (?, ?, ?, ?, 'accepted')",
-                [demande.trip_id, demande.user_id, demande.places, demande.prix || 0],
-                (err3) => {
-                  if (err3) console.error("Erreur insertion reservation:", err3);
-                }
-              );
-            }
-
-            // Mettre à jour le statut de la demande
-            db.query(
-              "UPDATE demandes SET status = 'accepted' WHERE id = ?",
-              [reservation_id],
-              (err3) => {
-                if (err3) console.error("Erreur update demande:", err3);
-                return res.json({ success: true, message: "Réservation acceptée" });
-              }
-            );
-          }
-        );
-      } else if (status === "rejected") {
-        db.query(
-          "UPDATE demandes SET status = 'rejected' WHERE id = ?",
-          [reservation_id],
-          (err2) => {
-            if (err2) {
-              console.error("Erreur refus:", err2);
-              return res.status(500).json({ message: "Erreur lors du refus" });
-            }
-            return res.json({ success: true, message: "Demande refusée" });
-          }
-        );
-      }
     }
   );
 });
