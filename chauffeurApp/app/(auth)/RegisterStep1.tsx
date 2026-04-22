@@ -186,7 +186,7 @@ export default function DriverRegisterStep1() {
         vous avez déjà un compte ?{" "}
         <Text
           style={styles.link}
-          onPress={() => router.push("/(auth)/driver-login")}
+          onPress={() => router.push("/(auth)/login")}
         >
           se connecter
         </Text>
