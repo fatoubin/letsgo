@@ -36,16 +36,19 @@ export default function DriverTripMapScreen() {
 
   const mapRef = useRef<MapView | null>(null);
   const watchPositionRef = useRef<Location.LocationSubscription | null>(null);
+  const lastLocationSentRef = useRef<number>(0);
 
   // 🔒 anti-spam
   const isFetchingRef = useRef(false);
   const lastFetchTimeRef = useRef(0);
   const lastPositionRef = useRef<Coordinates | null>(null);
 
+  const [driverId, setDriverId] = useState<number | null>(null);
   const [driverLocation, setDriverLocation] = useState<Coordinates | null>(null);
   const [endPoint, setEndPoint] = useState<Coordinates | null>(null);
   const [routeCoords, setRouteCoords] = useState<Coordinates[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isNavigating, setIsNavigating] = useState(false);
 
   // 🧭 Boussole
   const [heading, setHeading] = useState(0);
@@ -57,50 +60,94 @@ export default function DriverTripMapScreen() {
     return () => sub.remove();
   }, []);
 
-  // 📍 GPS
+  // 📍 Récupérer driverId
   useEffect(() => {
-    const start = async () => {
+    const loadDriverId = async () => {
+      const stored = await SecureStore.getItemAsync("driverId");
+      if (stored) setDriverId(Number(stored));
+    };
+    loadDriverId();
+  }, []);
+
+  // 📍 GPS avec envoi position toutes les 3-5 secondes
+  useEffect(() => {
+    const startWatching = async () => {
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== "granted") {
         Alert.alert("Erreur", "Permission GPS refusée");
         return;
       }
 
+      // Écouter les changements de position
       watchPositionRef.current = await Location.watchPositionAsync(
         {
-          accuracy: Location.Accuracy.Balanced,
-          timeInterval: 5000,
-          distanceInterval: 10,
+          accuracy: Location.Accuracy.High,
+          timeInterval: 3000,      // 3 secondes entre chaque mise à jour
+          distanceInterval: 5,     // 5 mètres minimum de déplacement
         },
-        (location) => {
+        async (location) => {
           const pos = {
             latitude: location.coords.latitude,
             longitude: location.coords.longitude,
           };
 
-          // 🔒 ignore petits mouvements
-          if (lastPositionRef.current) {
-            const dist = calculateDistance(lastPositionRef.current, pos);
-            if (dist < 30) return;
+          // Mettre à jour l'affichage local
+          setDriverLocation(pos);
+          lastPositionRef.current = pos;
+
+          // Envoyer la position au serveur (throttle: 1 fois toutes les 4 secondes)
+          const now = Date.now();
+          if (driverId && now - lastLocationSentRef.current >= 4000) {
+            lastLocationSentRef.current = now;
+            try {
+              const token = await SecureStore.getItemAsync("token");
+              await fetch(`${API_URL}/api/driver/update_location`, {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify({
+                  driver_id: driverId,
+                  lat: pos.latitude,
+                  lng: pos.longitude,
+                }),
+              });
+              console.log(`📍 Position envoyée: ${pos.latitude}, ${pos.longitude}`);
+            } catch (error) {
+              console.log("❌ Erreur envoi position:", error);
+            }
           }
 
-          lastPositionRef.current = pos;
-          setDriverLocation(pos);
+          // Centrer la carte
+          if (mapRef.current && isNavigating) {
+            mapRef.current.animateCamera({
+              center: pos,
+              pitch: 45,
+              heading: heading,
+              zoom: 17,
+            });
+          }
         }
       );
     };
 
-    start();
-    return () => watchPositionRef.current?.remove();
-  }, []);
+    startWatching();
+    return () => {
+      if (watchPositionRef.current) {
+        watchPositionRef.current.remove();
+      }
+    };
+  }, [heading, isNavigating, driverId]);
 
   // 📍 Destination (simple fallback)
   useEffect(() => {
     if (!trip?.destination) return;
 
-    // ici tu peux garder ton geocoding existant
+    // Ici tu peux garder ton geocoding existant
     setEndPoint({ latitude: 14.6937, longitude: -17.4441 }); // test Dakar
     setLoading(false);
+    setIsNavigating(true);
   }, [trip]);
 
   // 🗺️ ROUTE (ANTI-SPAM)
@@ -124,8 +171,7 @@ export default function DriverTripMapScreen() {
     }
 
     try {
-      if (__DEV__) console.log("🌐 Directions API");
-
+      console.log("🌐 Directions API");
       const url = `https://maps.googleapis.com/maps/api/directions/json?origin=${driverLocation.latitude},${driverLocation.longitude}&destination=${endPoint.latitude},${endPoint.longitude}&key=${GOOGLE_MAPS_KEY}`;
 
       const res = await fetch(url);
@@ -165,32 +211,13 @@ export default function DriverTripMapScreen() {
   // 🔁 recalcul contrôlé
   useEffect(() => {
     if (!driverLocation || !endPoint) return;
-
     fetchRoute();
-
   }, [
     driverLocation?.latitude,
     driverLocation?.longitude,
     endPoint?.latitude,
     endPoint?.longitude
   ]);
-
-  // 📐 distance
-  const calculateDistance = (a: Coordinates, b: Coordinates) => {
-    const R = 6371e3;
-    const φ1 = a.latitude * Math.PI / 180;
-    const φ2 = b.latitude * Math.PI / 180;
-    const Δφ = (b.latitude - a.latitude) * Math.PI / 180;
-    const Δλ = (b.longitude - a.longitude) * Math.PI / 180;
-
-    const c = 2 * Math.atan2(
-      Math.sqrt(Math.sin(Δφ / 2) ** 2 +
-      Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) ** 2),
-      Math.sqrt(1 - Math.sin(Δφ / 2) ** 2)
-    );
-
-    return R * c;
-  };
 
   const decodePolyline = (encoded: string): Coordinates[] => {
     let points: Coordinates[] = [];
@@ -241,17 +268,39 @@ export default function DriverTripMapScreen() {
           latitudeDelta: 0.05,
           longitudeDelta: 0.05,
         }}
+        showsUserLocation={true}
+        showsMyLocationButton={true}
       >
-        <Marker coordinate={driverLocation} />
-        <Marker coordinate={endPoint} />
+        <Marker coordinate={driverLocation} rotation={heading} flat>
+          <Text style={{ fontSize: 32 }}>🚗</Text>
+        </Marker>
+        <Marker coordinate={endPoint} pinColor="red">
+          <Text style={{ fontSize: 28 }}>🏁</Text>
+        </Marker>
 
         {routeCoords.length > 0 && (
-          <Polyline coordinates={routeCoords} strokeWidth={5} strokeColor="blue" />
+          <Polyline coordinates={routeCoords} strokeWidth={5} strokeColor="#2563EB" />
         )}
       </MapView>
 
       <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
-        <Text style={{ color: "#fff" }}>Retour</Text>
+        <Text style={{ color: "#fff" }}>← Retour</Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        style={styles.recenterButton}
+        onPress={() => {
+          if (mapRef.current && driverLocation) {
+            mapRef.current.animateCamera({
+              center: driverLocation,
+              pitch: 45,
+              heading: heading,
+              zoom: 17,
+            });
+          }
+        }}
+      >
+        <Text style={{ color: "#fff", fontSize: 20 }}>📍</Text>
       </TouchableOpacity>
     </View>
   );
@@ -260,13 +309,24 @@ export default function DriverTripMapScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   map: { flex: 1 },
-  center: { flex: 1, justifyContent: "center", alignItems: "center" },
+  center: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#1a1a2e" },
   backButton: {
     position: "absolute",
     top: 40,
     left: 20,
-    backgroundColor: "black",
-    padding: 10,
+    backgroundColor: "rgba(0,0,0,0.7)",
+    padding: 12,
     borderRadius: 10,
+  },
+  recenterButton: {
+    position: "absolute",
+    bottom: 100,
+    right: 20,
+    backgroundColor: "rgba(0,0,0,0.7)",
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    justifyContent: "center",
+    alignItems: "center",
   },
 });
