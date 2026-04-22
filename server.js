@@ -1044,6 +1044,85 @@ function getHorairesProchains(ligneId) {
     );
   });
 }
+// Récupérer l'itinéraire réel depuis Google Maps
+app.get("/api/transport/directions", async (req, res) => {
+  const { lat_depart, lon_depart, lat_arrivee, lon_arrivee } = req.query;
+  
+  if (!lat_depart || !lon_depart || !lat_arrivee || !lon_arrivee) {
+    return res.status(400).json({ message: "Coordonnées manquantes" });
+  }
+  
+  const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_API_KEY;
+  
+  if (!GOOGLE_MAPS_API_KEY) {
+    console.error("❌ Clé API Google Maps manquante");
+    return res.status(500).json({ message: "Configuration API manquante" });
+  }
+  
+  try {
+    const url = `https://maps.googleapis.com/maps/api/directions/json?origin=${lat_depart},${lon_depart}&destination=${lat_arrivee},${lon_arrivee}&mode=driving&key=${GOOGLE_MAPS_API_KEY}`;
+    
+    const response = await fetch(url);
+    const data = await response.json();
+    
+    if (data.status === "OK") {
+      const route = data.routes[0];
+      const leg = route.legs[0];
+      
+      // Décoder le polyline pour avoir les points de la route
+      const points = decodePolyline(route.overview_polyline.points);
+      
+      res.json({
+        success: true,
+        distance: leg.distance.text,
+        duration: leg.duration.text,
+        duration_seconds: leg.duration.value,
+        points: points,
+        start_address: leg.start_address,
+        end_address: leg.end_address
+      });
+    } else {
+      res.status(404).json({ message: "Aucun itinéraire trouvé", status: data.status });
+    }
+  } catch (error) {
+    console.error("Erreur directions:", error);
+    res.status(500).json({ message: "Erreur serveur" });
+  }
+});
+
+// Fonction pour décoder le polyline
+function decodePolyline(encoded) {
+  let points = [];
+  let index = 0, len = encoded.length;
+  let lat = 0, lng = 0;
+  
+  while (index < len) {
+    let b, shift = 0, result = 0;
+    do {
+      b = encoded.charCodeAt(index++) - 63;
+      result |= (b & 0x1f) << shift;
+      shift += 5;
+    } while (b >= 0x20);
+    let dlat = ((result & 1) ? ~(result >> 1) : (result >> 1));
+    lat += dlat;
+    
+    shift = 0;
+    result = 0;
+    do {
+      b = encoded.charCodeAt(index++) - 63;
+      result |= (b & 0x1f) << shift;
+      shift += 5;
+    } while (b >= 0x20);
+    let dlng = ((result & 1) ? ~(result >> 1) : (result >> 1));
+    lng += dlng;
+    
+    points.push({
+      latitude: lat / 1e5,
+      longitude: lng / 1e5
+    });
+  }
+  return points;
+}
 
 // ================= INTERURBAIN =================
 

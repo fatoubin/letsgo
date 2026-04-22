@@ -1,400 +1,296 @@
-import {
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  StyleSheet,
-  Alert,
-  ActivityIndicator,
-  ScrollView,
-} from "react-native";
-import { useState, useEffect, useRef, useCallback } from "react";
-import { router } from "expo-router";
+import { View, StyleSheet, Text, TouchableOpacity, Alert } from "react-native";
+import { useLocalSearchParams, router } from "expo-router";
+import { useEffect, useState, useRef } from "react";
+import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from "react-native-maps";
 import { Ionicons } from "@expo/vector-icons";
 import * as Location from "expo-location";
-import {
-  API_URL,
-  reverseGeocode,
-  searchArrets,
-  autocompleteAddress,
-  geocodeAddress,
-  getPlaceDetails,
-} from "../../lib/api";
 
-export default function RechercheTransport() {
-  const [departSaisi, setDepartSaisi] = useState("");
-  const [destinationSaisie, setDestinationSaisie] = useState("");
-  const [coordsDepart, setCoordsDepart] = useState(null);
-  const [coordsArrivee, setCoordsArrivee] = useState(null);
-  const [suggestionsDepart, setSuggestionsDepart] = useState([]);
-  const [suggestionsDestination, setSuggestionsDestination] = useState([]);
-  const [showDepartSuggestions, setShowDepartSuggestions] = useState(false);
-  const [showDestSuggestions, setShowDestSuggestions] = useState(false);
-  const [geocodingDepart, setGeocodingDepart] = useState(false);
-  const [geocodingArrivee, setGeocodingArrivee] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [resultats, setResultats] = useState([]);
-  const [positionActuelle, setPositionActuelle] = useState(null);
+export default function BusMapScreen() {
+  const params = useLocalSearchParams();
+  const {
+    ligneNumero,
+    departNom,
+    arriveeNom,
+    departLat,
+    departLon,
+    arriveeLat,
+    arriveeLon,
+  } = params;
 
-  const departTimeout = useRef(null);
-  const destTimeout = useRef(null);
-  const departInputRef = useRef(null);
-  const destInputRef = useRef(null);
+  const mapRef = useRef(null);
 
-  const isSelectingDepart = useRef(false);
-  const isSelectingDest = useRef(false);
+  // Coordonnées approximatives si non fournies
+  const start = {
+    latitude: departLat ? parseFloat(departLat) : 14.7167,
+    longitude: departLon ? parseFloat(departLon) : -17.4677,
+  };
+  const end = {
+    latitude: arriveeLat ? parseFloat(arriveeLat) : 14.6937,
+    longitude: arriveeLon ? parseFloat(arriveeLon) : -17.444,
+  };
 
-  // Récupérer position actuelle au démarrage
+  const [busPosition, setBusPosition] = useState(start);
+  const [routeCoords, setRouteCoords] = useState([]);
+  const [following, setFollowing] = useState(false);
+  const [userLocation, setUserLocation] = useState(null);
+  const intervalRef = useRef(null);
+
+  // Générer des points intermédiaires pour un tracé réaliste
+  useEffect(() => {
+    const points = [];
+    const steps = 20;
+    for (let i = 0; i <= steps; i++) {
+      const t = i / steps;
+      const lat = start.latitude + (end.latitude - start.latitude) * t;
+      const lng = start.longitude + (end.longitude - start.longitude) * t;
+      points.push({ latitude: lat, longitude: lng });
+    }
+    setRouteCoords(points);
+    setBusPosition(start);
+  }, []);
+
+  // Récupérer la position de l'utilisateur
   useEffect(() => {
     (async () => {
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status === "granted") {
         const loc = await Location.getCurrentPositionAsync({});
-        setPositionActuelle({ lat: loc.coords.latitude, lon: loc.coords.longitude });
+        setUserLocation({
+          latitude: loc.coords.latitude,
+          longitude: loc.coords.longitude,
+        });
       }
     })();
   }, []);
 
-  // Autocomplétion départ — BDD en priorité, Google Places en fallback
+  // Nettoyage
   useEffect(() => {
-    if (departTimeout.current) clearTimeout(departTimeout.current);
-    if (isSelectingDepart.current) {
-      isSelectingDepart.current = false;
-      return;
-    }
-    if (departSaisi.trim().length < 2) {
-      setSuggestionsDepart([]);
-      setShowDepartSuggestions(false);
-      return;
-    }
-    departTimeout.current = setTimeout(async () => {
-      const arrets = await searchArrets(departSaisi);
-      if (arrets.length > 0) {
-        setSuggestionsDepart(arrets.map(a => ({
-          id: a.id,
-          nom: a.nom,
-          latitude: a.latitude,
-          longitude: a.longitude,
-          type: "arret",
-        })));
-      } else {
-        const places = await autocompleteAddress(departSaisi, positionActuelle);
-        setSuggestionsDepart(places.map(p => ({
-          id: p.placeId,
-          nom: p.description,
-          latitude: null,
-          longitude: null,
-          type: "place",
-          placeId: p.placeId,
-        })));
-      }
-      setShowDepartSuggestions(true);
-    }, 300);
-    return () => { if (departTimeout.current) clearTimeout(departTimeout.current); };
-  }, [departSaisi, positionActuelle]);
-
-  // Autocomplétion destination
-  useEffect(() => {
-    if (destTimeout.current) clearTimeout(destTimeout.current);
-    if (isSelectingDest.current) {
-      isSelectingDest.current = false;
-      return;
-    }
-    if (destinationSaisie.trim().length < 2) {
-      setSuggestionsDestination([]);
-      setShowDestSuggestions(false);
-      return;
-    }
-    destTimeout.current = setTimeout(async () => {
-      const arrets = await searchArrets(destinationSaisie);
-      if (arrets.length > 0) {
-        setSuggestionsDestination(arrets.map(a => ({
-          id: a.id,
-          nom: a.nom,
-          latitude: a.latitude,
-          longitude: a.longitude,
-          type: "arret",
-        })));
-      } else {
-        const places = await autocompleteAddress(destinationSaisie, positionActuelle);
-        setSuggestionsDestination(places.map(p => ({
-          id: p.placeId,
-          nom: p.description,
-          latitude: null,
-          longitude: null,
-          type: "place",
-          placeId: p.placeId,
-        })));
-      }
-      setShowDestSuggestions(true);
-    }, 300);
-    return () => { if (destTimeout.current) clearTimeout(destTimeout.current); };
-  }, [destinationSaisie, positionActuelle]);
-
-  const selectItem = useCallback(async (type, item) => {
-    if (type === "depart") {
-      isSelectingDepart.current = true;
-      setDepartSaisi(item.nom);
-      setSuggestionsDepart([]);
-      setShowDepartSuggestions(false);
-
-      if (item.type === "arret") {
-        setCoordsDepart({ lat: item.latitude, lon: item.longitude });
-      } else {
-        setGeocodingDepart(true);
-        const details = await getPlaceDetails(item.placeId);
-        if (details) {
-          setCoordsDepart({ lat: details.lat, lon: details.lon });
-        } else {
-          const result = await geocodeAddress(item.nom);
-          if (result) setCoordsDepart({ lat: result.lat, lon: result.lon });
-          else Alert.alert("Erreur", "Impossible de localiser ce lieu.");
-        }
-        setGeocodingDepart(false);
-      }
-      departInputRef.current?.blur();
-    } else {
-      isSelectingDest.current = true;
-      setDestinationSaisie(item.nom);
-      setSuggestionsDestination([]);
-      setShowDestSuggestions(false);
-
-      if (item.type === "arret") {
-        setCoordsArrivee({ lat: item.latitude, lon: item.longitude });
-      } else {
-        setGeocodingArrivee(true);
-        const details = await getPlaceDetails(item.placeId);
-        if (details) {
-          setCoordsArrivee({ lat: details.lat, lon: details.lon });
-        } else {
-          const result = await geocodeAddress(item.nom);
-          if (result) setCoordsArrivee({ lat: result.lat, lon: result.lon });
-          else Alert.alert("Erreur", "Impossible de localiser ce lieu.");
-        }
-        setGeocodingArrivee(false);
-      }
-      destInputRef.current?.blur();
-    }
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
   }, []);
 
-  const utiliserPositionActuelle = useCallback(async () => {
-    const { status } = await Location.requestForegroundPermissionsAsync();
-    if (status !== "granted") {
-      Alert.alert("Permission refusée", "Activez la localisation.");
-      return;
-    }
-    const loc = await Location.getCurrentPositionAsync({});
-    const lat = loc.coords.latitude;
-    const lon = loc.coords.longitude;
-    setCoordsDepart({ lat, lon });
-    setGeocodingDepart(true);
-    const adresse = await reverseGeocode(lat, lon);
-    setGeocodingDepart(false);
-    isSelectingDepart.current = true;
-    setSuggestionsDepart([]);
-    setShowDepartSuggestions(false);
-    setDepartSaisi(adresse || `${lat.toFixed(4)}, ${lon.toFixed(4)}`);
-  }, []);
+  const startFollowing = () => {
+    if (intervalRef.current) clearInterval(intervalRef.current);
+    setFollowing(true);
+    let progress = 0;
 
-  const handleRecherche = useCallback(async () => {
-    if (!coordsDepart || !coordsArrivee) {
-      Alert.alert("Erreur", "Choisissez un départ et une destination valides.");
-      return;
-    }
-    setLoading(true);
-    try {
-      const params = new URLSearchParams({
-        lat_depart: coordsDepart.lat,
-        lon_depart: coordsDepart.lon,
-        lat_arrivee: coordsArrivee.lat,
-        lon_arrivee: coordsArrivee.lon,
-      }).toString();
-      const response = await fetch(`${API_URL}/api/transport/itineraires?${params}`);
-      const data = await response.json();
-      setResultats(data.itineraires || []);
-      if ((data.itineraires || []).length === 0) {
-        Alert.alert("Aucun résultat", data.message || "Aucun itinéraire trouvé entre ces deux points.");
+    intervalRef.current = setInterval(() => {
+      if (progress >= 1) {
+        clearInterval(intervalRef.current);
+        setFollowing(false);
+        Alert.alert("Arrivée", `Le bus est arrivé à ${arriveeNom}`);
+        return;
       }
-    } catch (err) {
-      Alert.alert("Erreur", "Impossible de trouver un itinéraire.");
-    } finally {
-      setLoading(false);
-    }
-  }, [coordsDepart, coordsArrivee]);
+      progress += 0.01; // Avance de 1% par intervalle
+      const newLat = start.latitude + (end.latitude - start.latitude) * progress;
+      const newLng = start.longitude + (end.longitude - start.longitude) * progress;
+      setBusPosition({ latitude: newLat, longitude: newLng });
+      
+      // Centrer la carte sur le bus
+      if (mapRef.current) {
+        mapRef.current.animateToRegion({
+          latitude: newLat,
+          longitude: newLng,
+          latitudeDelta: 0.02,
+          longitudeDelta: 0.02,
+        });
+      }
+    }, 2000); // Déplacement toutes les 2 secondes
+  };
 
-  const renderSuggestions = (suggestions, onSelect) => (
-    <ScrollView style={styles.suggestionsList} nestedScrollEnabled keyboardShouldPersistTaps="handled">
-      {suggestions.map((item) => (
-        <TouchableOpacity
-          key={item.id}
-          style={styles.suggestionItem}
-          onPress={() => onSelect(item)}
-        >
-          <Ionicons
-            name={item.type === "arret" ? "bus-outline" : "location-outline"}
-            size={16}
-            color={item.type === "arret" ? "#4DA3FF" : "#9AA4BF"}
-          />
-          <View style={styles.suggestionTextContainer}>
-            <Text style={styles.suggestionText}>{item.nom}</Text>
-            {item.type === "place" && (
-              <Text style={styles.suggestionSubText}>Lieu à proximité</Text>
-            )}
-          </View>
-        </TouchableOpacity>
-      ))}
-    </ScrollView>
-  );
+  const stopFollowing = () => {
+    if (intervalRef.current) clearInterval(intervalRef.current);
+    setFollowing(false);
+  };
+
+  const centerOnUser = () => {
+    if (userLocation && mapRef.current) {
+      mapRef.current.animateToRegion({
+        latitude: userLocation.latitude,
+        longitude: userLocation.longitude,
+        latitudeDelta: 0.02,
+        longitudeDelta: 0.02,
+      });
+    }
+  };
+
+  const centerOnBus = () => {
+    if (mapRef.current) {
+      mapRef.current.animateToRegion({
+        latitude: busPosition.latitude,
+        longitude: busPosition.longitude,
+        latitudeDelta: 0.02,
+        longitudeDelta: 0.02,
+      });
+    }
+  };
+
+  if (routeCoords.length === 0) {
+    return (
+      <View style={styles.center}>
+        <Text style={styles.loading}>Chargement de la carte...</Text>
+      </View>
+    );
+  }
 
   return (
-    <ScrollView style={styles.container} keyboardShouldPersistTaps="handled">
-      <Text style={styles.title}>Rechercher un itinéraire</Text>
-
-      {/* DÉPART */}
-      <View style={styles.inputGroup}>
-        <Text style={styles.label}>Départ</Text>
-        <TextInput
-          ref={departInputRef}
-          style={styles.input}
-          placeholder="Arrêt ou lieu (ex: Ouakam, Hôpital...)"
-          placeholderTextColor="#9AA4BF"
-          value={departSaisi}
-          onChangeText={(text) => {
-            setCoordsDepart(null);
-            setDepartSaisi(text);
-          }}
-          onFocus={() => {
-            if (suggestionsDepart.length > 0) setShowDepartSuggestions(true);
-          }}
-        />
-        {showDepartSuggestions && suggestionsDepart.length > 0 && (
-          <View style={styles.suggestionsContainer}>
-            {renderSuggestions(suggestionsDepart, (item) => selectItem("depart", item))}
-          </View>
-        )}
-        <TouchableOpacity style={styles.locationBtn} onPress={utiliserPositionActuelle}>
-          <Ionicons name="locate" size={20} color="#fff" />
-          <Text style={styles.locationBtnText}>Ma position</Text>
+    <View style={styles.container}>
+      <View style={styles.header}>
+        <TouchableOpacity onPress={() => router.back()}>
+          <Ionicons name="arrow-back" size={24} color="#fff" />
         </TouchableOpacity>
-        {geocodingDepart && <ActivityIndicator size="small" color="#4DA3FF" style={{ marginTop: 8 }} />}
-        {coordsDepart && !geocodingDepart && <Text style={styles.successText}>✓ Lieu reconnu</Text>}
-      </View>
-
-      {/* DESTINATION */}
-      <View style={styles.inputGroup}>
-        <Text style={styles.label}>Destination</Text>
-        <TextInput
-          ref={destInputRef}
-          style={styles.input}
-          placeholder="Arrêt ou lieu (ex: UCAD, Place Indépendance...)"
-          placeholderTextColor="#9AA4BF"
-          value={destinationSaisie}
-          onChangeText={(text) => {
-            setCoordsArrivee(null);
-            setDestinationSaisie(text);
-          }}
-          onFocus={() => {
-            if (suggestionsDestination.length > 0) setShowDestSuggestions(true);
-          }}
-        />
-        {showDestSuggestions && suggestionsDestination.length > 0 && (
-          <View style={styles.suggestionsContainer}>
-            {renderSuggestions(suggestionsDestination, (item) => selectItem("destination", item))}
-          </View>
-        )}
-        {geocodingArrivee && <ActivityIndicator size="small" color="#4DA3FF" style={{ marginTop: 8 }} />}
-        {coordsArrivee && !geocodingArrivee && <Text style={styles.successText}>✓ Lieu reconnu</Text>}
-      </View>
-
-      {/* BOUTON RECHERCHE */}
-      <TouchableOpacity
-        style={[styles.searchBtn, (!coordsDepart || !coordsArrivee || loading) && styles.disabled]}
-        onPress={handleRecherche}
-        disabled={!coordsDepart || !coordsArrivee || loading}
-      >
-        {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>Trouver un itinéraire</Text>}
-      </TouchableOpacity>
-
-      {/* RÉSULTATS */}
-      {resultats.length > 0 && (
-        <View style={styles.results}>
-          <Text style={styles.sectionTitle}>
-            🚍 {resultats.length} itinéraire{resultats.length > 1 ? 's' : ''} trouvé{resultats.length > 1 ? 's' : ''}
-          </Text>
-          {resultats.map((item, idx) => (
-            <TouchableOpacity
-              key={`${item.ligne.id}-${item.depart.nom}-${item.arrivee.nom}`}
-              style={styles.card}
-              onPress={() => {
-                // Envoyer toutes les coordonnées nécessaires à la carte
-                router.push({
-                  pathname: "/transport/bus-map",
-                  params: {
-                    ligneId: item.ligne.id,
-                    ligneNumero: item.ligne.numero,
-                    departNom: item.depart.nom,
-                    arriveeNom: item.arrivee.nom,
-                    departLat: item.depart.lat.toString(),
-                    departLon: item.depart.lon.toString(),
-                    arriveeLat: item.arrivee.lat.toString(),
-                    arriveeLon: item.arrivee.lon.toString(),
-                  },
-                });
-              }}
-            >
-              <Text style={styles.ligne}>Ligne {item.ligne.numero} — {item.ligne.nom}</Text>
-              <Text style={styles.cardText}>De {item.depart.nom} à {item.arrivee.nom}</Text>
-              <Text style={styles.cardText}>Durée estimée : {item.duree_estimee} min</Text>
-              {item.horaires.length > 0 && (
-                <Text style={styles.cardText}>Prochains départs : {item.horaires.join(", ")}</Text>
-              )}
-            </TouchableOpacity>
-          ))}
+        <Text style={styles.title}>Bus ligne {ligneNumero}</Text>
+        <View style={styles.headerButtons}>
+          <TouchableOpacity onPress={centerOnUser} style={styles.headerBtn}>
+            <Ionicons name="person" size={20} color="#4DA3FF" />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={centerOnBus} style={styles.headerBtn}>
+            <Ionicons name="bus" size={20} color="#4DA3FF" />
+          </TouchableOpacity>
         </View>
-      )}
-    </ScrollView>
+      </View>
+
+      <MapView
+        ref={mapRef}
+        style={styles.map}
+        provider={PROVIDER_GOOGLE}
+        initialRegion={{
+          latitude: (start.latitude + end.latitude) / 2,
+          longitude: (start.longitude + end.longitude) / 2,
+          latitudeDelta: 0.05,
+          longitudeDelta: 0.05,
+        }}
+      >
+        {/* Point de départ */}
+        <Marker coordinate={start} title="Départ" pinColor="green">
+          <View style={styles.markerStart}>
+            <Ionicons name="flag" size={20} color="#10B981" />
+          </View>
+        </Marker>
+        
+        {/* Point d'arrivée */}
+        <Marker coordinate={end} title="Arrivée" pinColor="red">
+          <View style={styles.markerEnd}>
+            <Ionicons name="flag" size={20} color="#EF4444" />
+          </View>
+        </Marker>
+        
+        {/* Position du bus */}
+        <Marker coordinate={busPosition} title={`Bus ligne ${ligneNumero}`}>
+          <View style={styles.markerBus}>
+            <Ionicons name="bus" size={24} color="#fff" />
+          </View>
+        </Marker>
+        
+        {/* Tracé de l'itinéraire */}
+        <Polyline
+          coordinates={routeCoords}
+          strokeWidth={4}
+          strokeColor="#2563EB"
+          lineDashPattern={[5, 5]}
+        />
+      </MapView>
+
+      {/* Contrôles */}
+      <View style={styles.controls}>
+        <View style={styles.info}>
+          <Text style={styles.infoText}>
+            🚏 {departNom} → {arriveeNom}
+          </Text>
+          <Text style={styles.infoText}>
+            {following ? "🚌 Suivi en cours..." : "⏸ Suivi arrêté"}
+          </Text>
+        </View>
+        
+        {!following ? (
+          <TouchableOpacity style={styles.followBtn} onPress={startFollowing}>
+            <Ionicons name="play" size={20} color="#fff" />
+            <Text style={styles.followText}>Suivre le bus</Text>
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity style={styles.stopBtn} onPress={stopFollowing}>
+            <Ionicons name="stop" size={20} color="#fff" />
+            <Text style={styles.followText}>Arrêter</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#0B132B", padding: 16 },
-  title: { color: "#fff", fontSize: 22, fontWeight: "bold", marginBottom: 20 },
-  inputGroup: { marginBottom: 20, position: "relative", zIndex: 1 },
-  label: { color: "#9AA4BF", marginBottom: 8 },
-  input: { backgroundColor: "#1F2A52", color: "#fff", padding: 12, borderRadius: 10 },
-  suggestionsContainer: {
-    position: "absolute",
-    top: 50,
-    left: 0,
-    right: 0,
-    backgroundColor: "#1F2A52",
-    borderRadius: 10,
-    zIndex: 100,
-    elevation: 5,
-    maxHeight: 220,
-    borderWidth: 1,
-    borderColor: "#2E3E6E",
-  },
-  suggestionsList: { maxHeight: 220 },
-  suggestionItem: {
+  container: { flex: 1, backgroundColor: "#0B132B" },
+  header: {
     flexDirection: "row",
     alignItems: "center",
-    padding: 12,
-    borderBottomWidth: 0.5,
-    borderBottomColor: "#3A4A6E",
+    justifyContent: "space-between",
+    padding: 16,
+    paddingTop: 50,
+    backgroundColor: "#0B132B",
   },
-  suggestionTextContainer: { marginLeft: 8, flex: 1 },
-  suggestionText: { color: "#fff", fontSize: 14 },
-  suggestionSubText: { color: "#9AA4BF", fontSize: 11, marginTop: 2 },
-  locationBtn: { flexDirection: "row", alignItems: "center", marginTop: 8, gap: 8, padding: 8 },
-  locationBtnText: { color: "#4DA3FF" },
-  successText: { color: "#4ade80", fontSize: 12, marginTop: 4 },
-  searchBtn: { backgroundColor: "#2563EB", padding: 16, borderRadius: 12, alignItems: "center", marginTop: 8 },
-  disabled: { opacity: 0.6 },
-  btnText: { color: "#fff", fontWeight: "600" },
-  results: { marginTop: 20, paddingBottom: 40 },
-  sectionTitle: { color: "#fff", fontSize: 18, fontWeight: "600", marginBottom: 12 },
-  card: { backgroundColor: "#1F2A52", borderRadius: 12, padding: 16, marginBottom: 12 },
-  ligne: { color: "#fff", fontSize: 16, fontWeight: "bold", marginBottom: 6 },
-  cardText: { color: "#9AA4BF", marginTop: 2 },
+  title: { color: "#fff", fontSize: 18, fontWeight: "bold", flex: 1, marginLeft: 16 },
+  headerButtons: { flexDirection: "row", gap: 12 },
+  headerBtn: { padding: 8 },
+  map: { flex: 1 },
+  markerStart: {
+    backgroundColor: "#10B981",
+    borderRadius: 20,
+    padding: 6,
+    borderWidth: 2,
+    borderColor: "#fff",
+  },
+  markerEnd: {
+    backgroundColor: "#EF4444",
+    borderRadius: 20,
+    padding: 6,
+    borderWidth: 2,
+    borderColor: "#fff",
+  },
+  markerBus: {
+    backgroundColor: "#2563EB",
+    borderRadius: 20,
+    padding: 6,
+    borderWidth: 2,
+    borderColor: "#fff",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  controls: {
+    position: "absolute",
+    bottom: 20,
+    left: 16,
+    right: 16,
+  },
+  info: {
+    backgroundColor: "#1F2A52",
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 12,
+  },
+  infoText: { color: "#9AA4BF", fontSize: 12, textAlign: "center" },
+  followBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#10B981",
+    padding: 14,
+    borderRadius: 12,
+    gap: 8,
+  },
+  stopBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#EF4444",
+    padding: 14,
+    borderRadius: 12,
+    gap: 8,
+  },
+  followText: { color: "#fff", fontSize: 16, fontWeight: "bold" },
+  center: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#0B132B" },
+  loading: { color: "#fff" },
 });
