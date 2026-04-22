@@ -36,7 +36,7 @@ export default function BusMapScreen() {
   const [duration, setDuration] = useState(null);
   const [distance, setDistance] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [progress, setProgress] = useState(0);
+  const [progressIndex, setProgressIndex] = useState(0);
   const intervalRef = useRef(null);
 
   // Récupérer l'itinéraire réel depuis l'API
@@ -55,7 +55,7 @@ export default function BusMapScreen() {
         } else {
           // Fallback: points intermédiaires simples
           const points = [];
-          const steps = 20;
+          const steps = 30;
           for (let i = 0; i <= steps; i++) {
             const t = i / steps;
             const lat = start.latitude + (end.latitude - start.latitude) * t;
@@ -68,9 +68,8 @@ export default function BusMapScreen() {
         }
       } catch (error) {
         console.error("Erreur directions:", error);
-        // Fallback
         const points = [];
-        const steps = 20;
+        const steps = 30;
         for (let i = 0; i <= steps; i++) {
           const t = i / steps;
           const lat = start.latitude + (end.latitude - start.latitude) * t;
@@ -112,19 +111,18 @@ export default function BusMapScreen() {
   const startFollowing = () => {
     if (intervalRef.current) clearInterval(intervalRef.current);
     setFollowing(true);
-    let currentProgress = 0;
-    const totalSteps = routeCoords.length;
+    let currentIndex = progressIndex;
 
     intervalRef.current = setInterval(() => {
-      if (currentProgress >= totalSteps - 1) {
+      if (currentIndex >= routeCoords.length - 1) {
         clearInterval(intervalRef.current);
         setFollowing(false);
         Alert.alert("Arrivée", `Le bus est arrivé à ${arriveeNom}`);
         return;
       }
-      currentProgress++;
-      setProgress(currentProgress);
-      const newPosition = routeCoords[currentProgress];
+      currentIndex++;
+      setProgressIndex(currentIndex);
+      const newPosition = routeCoords[currentIndex];
       if (newPosition) {
         setBusPosition(newPosition);
         
@@ -137,12 +135,18 @@ export default function BusMapScreen() {
           });
         }
       }
-    }, 3000);
+    }, 2000);
   };
 
   const stopFollowing = () => {
     if (intervalRef.current) clearInterval(intervalRef.current);
     setFollowing(false);
+  };
+
+  const resetTracking = () => {
+    stopFollowing();
+    setProgressIndex(0);
+    setBusPosition(routeCoords[0] || start);
   };
 
   const centerOnUser = () => {
@@ -175,6 +179,8 @@ export default function BusMapScreen() {
       </View>
     );
   }
+
+  const progressPercent = routeCoords.length > 0 ? (progressIndex / (routeCoords.length - 1)) * 100 : 0;
 
   return (
     <View style={styles.container}>
@@ -240,24 +246,30 @@ export default function BusMapScreen() {
           <Text style={styles.infoText}>
             {following ? "🚌 Suivi en cours..." : "⏸ Suivi arrêté"}
           </Text>
-          {following && routeCoords.length > 0 && (
-            <View style={styles.progressBar}>
-              <View style={[styles.progressFill, { width: `${(progress / (routeCoords.length - 1)) * 100}%` }]} />
-            </View>
-          )}
+          <View style={styles.progressBar}>
+            <View style={[styles.progressFill, { width: `${progressPercent}%` }]} />
+          </View>
+          <Text style={styles.progressText}>{Math.round(progressPercent)}% du trajet</Text>
         </View>
         
-        {!following ? (
-          <TouchableOpacity style={styles.followBtn} onPress={startFollowing}>
-            <Ionicons name="play" size={20} color="#fff" />
-            <Text style={styles.followText}>Suivre le bus</Text>
+        <View style={styles.buttonRow}>
+          {!following ? (
+            <TouchableOpacity style={styles.followBtn} onPress={startFollowing}>
+              <Ionicons name="play" size={20} color="#fff" />
+              <Text style={styles.followText}>Suivre</Text>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity style={styles.stopBtn} onPress={stopFollowing}>
+              <Ionicons name="stop" size={20} color="#fff" />
+              <Text style={styles.followText}>Arrêter</Text>
+            </TouchableOpacity>
+          )}
+          
+          <TouchableOpacity style={styles.resetBtn} onPress={resetTracking}>
+            <Ionicons name="refresh" size={20} color="#fff" />
+            <Text style={styles.followText}>Recommencer</Text>
           </TouchableOpacity>
-        ) : (
-          <TouchableOpacity style={styles.stopBtn} onPress={stopFollowing}>
-            <Ionicons name="stop" size={20} color="#fff" />
-            <Text style={styles.followText}>Arrêter</Text>
-          </TouchableOpacity>
-        )}
+        </View>
       </View>
     </View>
   );
@@ -317,18 +329,24 @@ const styles = StyleSheet.create({
   },
   infoText: { color: "#9AA4BF", fontSize: 12, textAlign: "center", marginBottom: 4 },
   progressBar: {
-    height: 4,
+    height: 6,
     backgroundColor: "#2A3655",
-    borderRadius: 2,
+    borderRadius: 3,
     marginTop: 8,
     overflow: "hidden",
   },
   progressFill: {
     height: "100%",
     backgroundColor: "#10B981",
-    borderRadius: 2,
+    borderRadius: 3,
+  },
+  progressText: { color: "#4DA3FF", fontSize: 10, textAlign: "center", marginTop: 4 },
+  buttonRow: {
+    flexDirection: "row",
+    gap: 10,
   },
   followBtn: {
+    flex: 1,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
@@ -338,6 +356,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   stopBtn: {
+    flex: 1,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
@@ -346,7 +365,17 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     gap: 8,
   },
-  followText: { color: "#fff", fontSize: 16, fontWeight: "bold" },
+  resetBtn: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#2563EB",
+    padding: 14,
+    borderRadius: 12,
+    gap: 8,
+  },
+  followText: { color: "#fff", fontSize: 14, fontWeight: "bold" },
   center: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#0B132B" },
   loading: { color: "#fff", marginTop: 10 },
 });
