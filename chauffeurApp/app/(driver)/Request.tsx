@@ -13,8 +13,7 @@ import * as SecureStore from "expo-secure-store";
 
 import { COLORS } from "../../src/styles/colors";
 import { globalStyles } from "../../src/styles/globalStyles";
-import { getDriverRequests, acceptReservation, rejectReservation, API_URL, getToken } from "../../src/services/api";
-
+import { getDriverRequests, acceptDemande, rejectDemande,  } from "../../src/services/api";
 type Request = {
   id: number;
   depart: string;
@@ -62,36 +61,30 @@ export default function DriverRequestsScreen() {
   };
 
   const handleAccept = async (id: number) => {
-    setActionLoading(id);
-    try {
-      console.log("📤 Acceptation de la demande:", id);
-      const result = await acceptReservation(id);
-      console.log("✅ Réponse acceptation:", result);
-      Alert.alert("✅ Succès", "Réservation acceptée");
-      if (driverId) await fetchRequests(driverId);
-    } catch (e: any) {
-      console.log("❌ Erreur acceptation:", e);
-      Alert.alert("Erreur", e.message || "Action impossible");
-    } finally {
-      setActionLoading(null);
-    }
-  };
+  setActionLoading(id);
+  try {
+    const result = await acceptDemande(id);  // ← utilise demande_action
+    Alert.alert("✅ Succès", "Demande acceptée");
+    if (driverId) await fetchRequests(driverId);
+  } catch (e: any) {
+    Alert.alert("Erreur", e.message || "Action impossible");
+  } finally {
+    setActionLoading(null);
+  }
+};
 
   const handleReject = async (id: number) => {
-    setActionLoading(id);
-    try {
-      console.log("📤 Refus de la demande:", id);
-      const result = await rejectReservation(id);
-      console.log("✅ Réponse refus:", result);
-      Alert.alert("Refusée", "Réservation refusée");
-      if (driverId) await fetchRequests(driverId);
-    } catch (e: any) {
-      console.log("❌ Erreur refus:", e);
-      Alert.alert("Erreur", e.message || "Action impossible");
-    } finally {
-      setActionLoading(null);
-    }
-  };
+  setActionLoading(id);
+  try {
+    const result = await rejectDemande(id);  // ← utilise demande_action
+    Alert.alert("Refusée", "Demande refusée");
+    if (driverId) await fetchRequests(driverId);
+  } catch (e: any) {
+    Alert.alert("Erreur", e.message || "Action impossible");
+  } finally {
+    setActionLoading(null);
+  }
+};
 
   const renderItem = ({ item }: { item: Request }) => (
     <View style={styles.card}>

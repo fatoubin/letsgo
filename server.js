@@ -687,6 +687,28 @@ app.post("/api/trips/reservation_action", authenticateDriver, (req, res) => {
   );
 });
 
+// ── Accepter / Refuser une DEMANDE (table demandes) ──
+app.post("/api/trips/demande_action", authenticateDriver, (req, res) => {
+  const { demande_id, status } = req.body;
+
+  if (!demande_id || !status)
+    return res.status(400).json({ message: "Champs manquants" });
+
+  if (!["accepted", "rejected"].includes(status))
+    return res.status(400).json({ message: "Statut invalide" });
+
+  db.query(
+    "UPDATE demandes SET status = ? WHERE id = ?",
+    [status, demande_id],
+    (err, result) => {
+      if (err) return res.status(500).json({ message: "Erreur serveur" });
+      if (result.affectedRows === 0)
+        return res.status(404).json({ message: "Demande non trouvée" });
+      res.json({ success: true, message: `Demande ${status}` });
+    }
+  );
+});
+
 // ── Modifier un trajet ──
 app.post("/api/trips/update", authenticateDriver, (req, res) => {
   const { trip_id, departure, destination, heure, seats } = req.body;

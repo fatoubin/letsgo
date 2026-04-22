@@ -169,6 +169,21 @@ export async function rejectReservation(reservationId: number) {
   });
 }
 
+// Pour accepter/refuser une DEMANDE (table demandes)
+export async function acceptDemande(demandeId: number) {
+  return fetchWithAuth("/api/trips/demande_action", {
+    method: "POST",
+    body: JSON.stringify({ demande_id: demandeId, status: "accepted" })
+  });
+}
+
+export async function rejectDemande(demandeId: number) {
+  return fetchWithAuth("/api/trips/demande_action", {
+    method: "POST",
+    body: JSON.stringify({ demande_id: demandeId, status: "rejected" })
+  });
+}
+
 /* =========================
    📊 STATS & HISTORIQUE
 ========================= */
