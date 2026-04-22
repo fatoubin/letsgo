@@ -1,10 +1,9 @@
-import { View, Text, FlatList, StyleSheet, ActivityIndicator, TouchableOpacity, Alert, Modal, Linking } from "react-native";
+import { View, Text, FlatList, StyleSheet, ActivityIndicator, TouchableOpacity, Alert, Linking } from "react-native";
 import { useFocusEffect } from "expo-router";
 import { useCallback, useState, useEffect } from "react";
 import { router } from "expo-router";
 import { getMesReservations, annulerReservation } from "../../lib/api";
 import { Ionicons } from "@expo/vector-icons";
-import MapView, { Marker, PROVIDER_GOOGLE } from "react-native-maps";
 
 type Reservation = {
   id: number;
@@ -34,8 +33,6 @@ export default function MesReservations() {
   const [filteredReservations, setFilteredReservations] = useState<Reservation[]>([]);
   const [loading, setLoading] = useState(true);
   const [filtre, setFiltre] = useState<Filtre>("TOUTES");
-  const [selectedReservation, setSelectedReservation] = useState<Reservation | null>(null);
-  const [showMap, setShowMap] = useState(false);
 
   const loadReservations = async () => {
     try {
@@ -56,7 +53,6 @@ export default function MesReservations() {
     }, [])
   );
 
-  // Filtrer les réservations
   const applyFilter = useCallback(() => {
     if (filtre === "TOUTES") {
       setFilteredReservations(reservations);
@@ -90,8 +86,22 @@ export default function MesReservations() {
   };
 
   const handleSeeLocation = (reservation: Reservation) => {
-    setSelectedReservation(reservation);
-    setShowMap(true);
+    console.log("📍 Ouverture Google Maps avec itinéraire:", { 
+      lat: reservation.chauffeur_lat, 
+      lng: reservation.chauffeur_lng 
+    });
+    
+    if (reservation.chauffeur_lat && reservation.chauffeur_lng) {
+      // URL pour obtenir l'itinéraire depuis la position actuelle vers le chauffeur
+      const url = `https://www.google.com/maps/dir/?api=1&destination=${reservation.chauffeur_lat},${reservation.chauffeur_lng}&travelmode=driving`;
+      
+      Linking.openURL(url).catch(err => {
+        console.error("Erreur ouverture carte:", err);
+        Alert.alert("Erreur", "Impossible d'ouvrir la carte");
+      });
+    } else {
+      Alert.alert("Info", "Position non disponible");
+    }
   };
 
   const handleAnnuler = (reservation: Reservation) => {
@@ -226,15 +236,13 @@ export default function MesReservations() {
                     <Ionicons name="call-outline" size={16} color="#fff" />
                     <Text style={styles.actionButtonText}>Appeler</Text>
                   </TouchableOpacity>
-                  {item.chauffeur_lat && item.chauffeur_lng && (
-                    <TouchableOpacity 
-                      style={styles.locationButton}
-                      onPress={() => handleSeeLocation(item)}
-                    >
-                      <Ionicons name="location-outline" size={16} color="#fff" />
-                      <Text style={styles.actionButtonText}>Voir position</Text>
-                    </TouchableOpacity>
-                  )}
+                  <TouchableOpacity 
+                    style={styles.locationButton}
+                    onPress={() => handleSeeLocation(item)}
+                  >
+                    <Ionicons name="location-outline" size={16} color="#fff" />
+                    <Text style={styles.actionButtonText}>Voir position</Text>
+                  </TouchableOpacity>
                   <TouchableOpacity 
                     style={styles.cancelButton}
                     onPress={() => handleAnnuler(item)}
@@ -264,55 +272,6 @@ export default function MesReservations() {
           </View>
         )}
       />
-
-      {/* Modal carte */}
-      <Modal
-        visible={showMap}
-        animationType="slide"
-        onRequestClose={() => setShowMap(false)}
-      >
-        <View style={styles.modalContainer}>
-          <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>Position du véhicule</Text>
-            <TouchableOpacity onPress={() => setShowMap(false)}>
-              <Ionicons name="close" size={24} color="#fff" />
-            </TouchableOpacity>
-          </View>
-          {selectedReservation && selectedReservation.chauffeur_lat && selectedReservation.chauffeur_lng && (
-            <MapView
-              style={styles.map}
-              provider={PROVIDER_GOOGLE}
-              initialRegion={{
-                latitude: selectedReservation.chauffeur_lat,
-                longitude: selectedReservation.chauffeur_lng,
-                latitudeDelta: 0.01,
-                longitudeDelta: 0.01,
-              }}
-            >
-              <Marker
-                coordinate={{
-                  latitude: selectedReservation.chauffeur_lat,
-                  longitude: selectedReservation.chauffeur_lng,
-                }}
-                title={selectedReservation.vehicle_type || "Véhicule"}
-                description={`${selectedReservation.chauffeur_prenom} ${selectedReservation.chauffeur_nom}`}
-              >
-                <View style={styles.markerContainer}>
-                  <Ionicons name="car" size={30} color="#2563EB" />
-                </View>
-              </Marker>
-            </MapView>
-          )}
-          <View style={styles.modalFooter}>
-            <Text style={styles.modalFooterText}>
-              {selectedReservation?.chauffeur_prenom} {selectedReservation?.chauffeur_nom}
-            </Text>
-            <Text style={styles.modalFooterSubtext}>
-              {selectedReservation?.vehicle_type} - {selectedReservation?.vehicle_plate}
-            </Text>
-          </View>
-        </View>
-      </Modal>
     </View>
   );
 }
@@ -494,44 +453,5 @@ const styles = StyleSheet.create({
     fontSize: 14,
     textAlign: "center",
     marginTop: 8,
-  },
-  modalContainer: {
-    flex: 1,
-    backgroundColor: "#0B132B",
-  },
-  modalHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    padding: 16,
-    backgroundColor: "#1C2541",
-  },
-  modalTitle: {
-    color: "#fff",
-    fontSize: 18,
-    fontWeight: "bold",
-  },
-  map: {
-    flex: 1,
-  },
-  markerContainer: {
-    backgroundColor: "#2563EB",
-    borderRadius: 20,
-    padding: 4,
-  },
-  modalFooter: {
-    padding: 16,
-    backgroundColor: "#1C2541",
-    alignItems: "center",
-  },
-  modalFooterText: {
-    color: "#fff",
-    fontSize: 14,
-    fontWeight: "bold",
-  },
-  modalFooterSubtext: {
-    color: "#9AA4BF",
-    fontSize: 12,
-    marginTop: 4,
   },
 });
