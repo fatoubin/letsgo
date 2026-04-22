@@ -5,61 +5,79 @@ import {
   TouchableOpacity,
   Image,
   ScrollView,
+  StatusBar,
 } from "react-native";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import { getUser } from "../../lib/api";
 
 export default function HomeScreen() {
   const [showMenu, setShowMenu] = useState(false);
+  const [prenom, setPrenom] = useState("");
+
+  useEffect(() => {
+    async function loadUser() {
+      const user = await getUser();
+      if (user?.prenom) {
+        setPrenom(user.prenom);
+      }
+    }
+    loadUser();
+  }, []);
 
   return (
     <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+      <StatusBar barStyle="light-content" />
+
       {/* HEADER */}
       <View style={styles.header}>
-        <Ionicons name="menu" size={26} color="#fff" />
+        <TouchableOpacity style={styles.menuBtn}>
+          <Ionicons name="menu" size={24} color="#fff" />
+        </TouchableOpacity>
 
         <Text style={styles.logo}>SAMABUS</Text>
 
-        <TouchableOpacity onPress={() => setShowMenu(!showMenu)}>
-          <Ionicons name="person-circle" size={30} color="#4DA3FF" />
+        <TouchableOpacity onPress={() => setShowMenu(!showMenu)} style={styles.avatarBtn}>
+          <Ionicons name="person-circle" size={32} color="#4DA3FF" />
         </TouchableOpacity>
       </View>
 
       {/* MENU DÉROULANT */}
       {showMenu && (
         <View style={styles.dropdown}>
-       <TouchableOpacity
-  style={styles.dropdownItem}
-  onPress={() => {
-    setShowMenu(false);
-    router.push("/client/mes-planifications");
-  }}
->
-  <Ionicons name="calendar-outline" size={18} color="#fff" />
-  <Text style={styles.dropdownText}>Mes planifications</Text>
-</TouchableOpacity>
+          <TouchableOpacity
+            style={styles.dropdownItem}
+            onPress={() => {
+              setShowMenu(false);
+              router.push("/client/mes-planifications");
+            }}
+          >
+            <Ionicons name="calendar-outline" size={16} color="#4DA3FF" />
+            <Text style={styles.dropdownText}>Mes planifications</Text>
+          </TouchableOpacity>
 
-<TouchableOpacity
-  style={styles.dropdownItem}
-  onPress={() => {
-    setShowMenu(false);
-    router.push("/client/mes-reservations");
-  }}
->
-  <Ionicons name="bookmark-outline" size={18} color="#fff" />
-  <Text style={styles.dropdownText}>Mes réservations</Text>
-</TouchableOpacity>
-<TouchableOpacity
-  style={styles.dropdownItem}
-  onPress={() => {
-    setShowMenu(false);
-    router.push("/client/mes-reservations-interurbaines");
-  }}
->
-  <Ionicons name="bus-outline" size={18} color="#fff" />
-  <Text style={styles.dropdownText}>Mes réservations (Bus)</Text>
-</TouchableOpacity>
+          <TouchableOpacity
+            style={styles.dropdownItem}
+            onPress={() => {
+              setShowMenu(false);
+              router.push("/client/mes-reservations");
+            }}
+          >
+            <Ionicons name="bookmark-outline" size={16} color="#4DA3FF" />
+            <Text style={styles.dropdownText}>Mes réservations</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.dropdownItem}
+            onPress={() => {
+              setShowMenu(false);
+              router.push("/client/mes-reservations-interurbaines");
+            }}
+          >
+            <Ionicons name="bus-outline" size={16} color="#4DA3FF" />
+            <Text style={styles.dropdownText}>Mes réservations (Bus)</Text>
+          </TouchableOpacity>
 
           <TouchableOpacity
             style={styles.dropdownItem}
@@ -68,9 +86,11 @@ export default function HomeScreen() {
               router.push("/compte");
             }}
           >
-            <Ionicons name="person-outline" size={18} color="#fff" />
+            <Ionicons name="person-outline" size={16} color="#4DA3FF" />
             <Text style={styles.dropdownText}>Mon compte</Text>
           </TouchableOpacity>
+
+          <View style={styles.dropdownDivider} />
 
           <TouchableOpacity
             style={styles.dropdownItem}
@@ -79,7 +99,7 @@ export default function HomeScreen() {
               router.replace("/auth/login");
             }}
           >
-            <Ionicons name="log-out-outline" size={18} color="#ff6b6b" />
+            <Ionicons name="log-out-outline" size={16} color="#ff6b6b" />
             <Text style={[styles.dropdownText, { color: "#ff6b6b" }]}>
               Déconnexion
             </Text>
@@ -87,104 +107,119 @@ export default function HomeScreen() {
         </View>
       )}
 
+      {/* GREETING avec nom */}
+      <View style={styles.greeting}>
+        <Text style={styles.greetingText}>
+          Bonjour{prenom ? `, ${prenom}` : ""} 👋
+        </Text>
+        <Text style={styles.greetingSubtext}>Où allez-vous aujourd'hui ?</Text>
+      </View>
+
       {/* IMAGE BANNIÈRE */}
       <Image
         source={require("../../assets/images/home-banner.png")}
         style={styles.heroImage}
       />
 
+      {/* SECTION TITRE */}
+      <Text style={styles.sectionTitle}>Services</Text>
+
       {/* COVOITURAGE */}
-      <View style={styles.card}>
-        <View style={styles.cardHeader}>
-          <Ionicons name="car" size={22} color="#4DA3FF" />
-          <Text style={styles.cardTitle}>Covoiturage</Text>
+      <View style={[styles.card, styles.cardCovoiturage]}>
+        <View style={styles.cardHeaderRow}>
+          <View style={styles.iconBadge}>
+            <Ionicons name="car" size={20} color="#4DA3FF" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.cardTitle}>Covoiturage</Text>
+            <Text style={styles.cardSubtitle}>Déplacez-vous plus simplement à Dakar</Text>
+          </View>
         </View>
 
-        <Text style={styles.cardSubtitle}>
-          Déplacez-vous plus simplement à Dakar
-        </Text>
-
-             <View style={styles.row}>
+        <View style={styles.row}>
           <TouchableOpacity
             style={[styles.actionBtn, styles.primaryBtn]}
             onPress={() => router.push("/client/planifier")}
           >
-            <Ionicons name="add" size={20} color="#fff" />
-            <Text style={styles.btnText}>Planifier un trajet</Text>
+            <Ionicons name="add-circle-outline" size={18} color="#fff" />
+            <Text style={styles.btnText}>Planifier</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
             style={[styles.actionBtn, styles.secondaryBtn]}
             onPress={() => router.push("/client/liste-trajets")}
           >
-            <Ionicons name="search" size={20} color="#fff" />
+            <Ionicons name="search-outline" size={18} color="#fff" />
             <Text style={styles.btnText}>Voir les trajets</Text>
           </TouchableOpacity>
         </View>
+      </View>
+
+      {/* BUS URBAIN */}
+      <View style={[styles.card, styles.cardUrbain]}>
+        <View style={styles.cardHeaderRow}>
+          <View style={[styles.iconBadge, { backgroundColor: "#0D3D2E" }]}>
+            <Ionicons name="bus" size={20} color="#3DDC97" />
           </View>
-
-        
-      
-
-     {/* BUS URBAIN (Dakar) */}
-<View style={styles.card}>
-  <View style={styles.cardHeader}>
-    <Ionicons name="bus" size={22} color="#3DDC97" />
-    <Text style={styles.cardTitle}>Bus Urbain (Dakar)</Text>
-  </View>
-  <Text style={styles.cardSubtitle}>
-    Trouvez un itinéraire à l’intérieur de Dakar
-  </Text>
-  <TouchableOpacity
-    style={[styles.actionBtn, { backgroundColor: "#1E6F5C" }]}
-    onPress={() => router.push("/transport/recherche")}
-  >
-    <Ionicons name="map" size={22} color="#fff" />
-    <Text style={styles.btnText}>Rechercher un trajet</Text>
-  </TouchableOpacity>
-</View>
-
-{/* BUS INTERURBAIN (vers autres régions) */}
-<View style={styles.card}>
-  <View style={styles.cardHeader}>
-    <Ionicons name="bus-outline" size={22} color="#FFC107" />
-    <Text style={styles.cardTitle}>Bus Interurbain</Text>
-  </View>
-  <Text style={styles.cardSubtitle}>
-    Voyagez vers les autres régions (Mbour, Thiès, etc.)
-  </Text>
-  <TouchableOpacity
-    style={[styles.actionBtn, { backgroundColor: "#247B9E" }]}
-    onPress={() => router.push("/transport/interurbain")}
-  >
-    <Ionicons name="globe" size={22} color="#fff" />
-    <Text style={styles.btnText}>Rechercher un trajet</Text>
-  </TouchableOpacity>
-</View>
-
-
-      {/* FAVORIS */}
-      <View style={styles.card}>
-        <View style={styles.cardHeader}>
-          <Ionicons name="star" size={22} color="#FFC107" />
-          <Text style={styles.cardTitle}>Trajets favoris</Text>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.cardTitle}>Bus Urbain <Text style={styles.tagDakar}>Dakar</Text></Text>
+            <Text style={styles.cardSubtitle}>Itinéraire à l'intérieur de Dakar</Text>
+          </View>
         </View>
-
-        <TouchableOpacity style={styles.favoriteItem}>
-          <Text style={styles.favoriteText}>📍 Dakar → Thiès</Text>
-          <Text style={styles.time}>07:30</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity style={styles.favoriteItem}>
-          <Text style={styles.favoriteText}>📍 Ouakam → Plateau</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity style={styles.addFav}>
-          <Text style={styles.addFavText}>+ Ajouter un favori</Text>
+        <TouchableOpacity
+          style={[styles.actionBtn, styles.urbainBtn]}
+          onPress={() => router.push("/transport/recherche")}
+        >
+          <Ionicons name="map-outline" size={18} color="#fff" />
+          <Text style={styles.btnText}>Rechercher un trajet</Text>
         </TouchableOpacity>
       </View>
 
-      <View style={{ height: 30 }} />
+      {/* BUS INTERURBAIN */}
+      <View style={[styles.card, styles.cardInterurbain]}>
+        <View style={styles.cardHeaderRow}>
+          <View style={[styles.iconBadge, { backgroundColor: "#2C1F00" }]}>
+            <Ionicons name="bus-outline" size={20} color="#FFC107" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.cardTitle}>Bus Interurbain</Text>
+            <Text style={styles.cardSubtitle}>Mbour, Thiès, et autres régions</Text>
+          </View>
+        </View>
+        <TouchableOpacity
+          style={[styles.actionBtn, styles.interurbainBtn]}
+          onPress={() => router.push("/transport/interurbain")}
+        >
+          <Ionicons name="globe-outline" size={18} color="#fff" />
+          <Text style={styles.btnText}>Rechercher un trajet</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* FAVORIS */}
+      <Text style={styles.sectionTitle}>Favoris</Text>
+      <View style={styles.card}>
+        <TouchableOpacity style={styles.favoriteItem}>
+          <View style={styles.favoriteLeft}>
+            <View style={[styles.dot, { backgroundColor: "#4DA3FF" }]} />
+            <Text style={styles.favoriteText}>Dakar → Thiès</Text>
+          </View>
+          <Text style={styles.time}>07:30</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={[styles.favoriteItem, { borderBottomWidth: 0 }]}>
+          <View style={styles.favoriteLeft}>
+            <View style={[styles.dot, { backgroundColor: "#3DDC97" }]} />
+            <Text style={styles.favoriteText}>Ouakam → Plateau</Text>
+          </View>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={styles.addFav}>
+          <Ionicons name="add-circle-outline" size={16} color="#4DA3FF" />
+          <Text style={styles.addFavText}>Ajouter un favori</Text>
+        </TouchableOpacity>
+      </View>
+
+      <View style={{ height: 90 }} />
     </ScrollView>
   );
 }
@@ -192,142 +227,214 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#0B132B",
+    backgroundColor: "#070F23",
     paddingHorizontal: 16,
   },
-
   header: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginTop: 20,
-    marginBottom: 15,
+    marginTop: 52,
+    marginBottom: 8,
   },
-
+  menuBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    backgroundColor: "#111D3C",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  avatarBtn: {
+    width: 38,
+    height: 38,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   logo: {
     color: "#fff",
-    fontSize: 20,
-    fontWeight: "bold",
+    fontSize: 18,
+    fontWeight: "800",
+    letterSpacing: 2,
   },
-
+  greeting: {
+    marginTop: 16,
+    marginBottom: 16,
+  },
+  greetingText: {
+    color: "#fff",
+    fontSize: 22,
+    fontWeight: "700",
+  },
+  greetingSubtext: {
+    color: "#5A6A8A",
+    fontSize: 14,
+    marginTop: 2,
+  },
   heroImage: {
     width: "100%",
-    height: 180,
-    borderRadius: 18,
-    marginBottom: 20,
+    height: 160,
+    borderRadius: 20,
+    marginBottom: 24,
   },
-
+  sectionTitle: {
+    color: "#8899BB",
+    fontSize: 12,
+    fontWeight: "700",
+    letterSpacing: 1.5,
+    textTransform: "uppercase",
+    marginBottom: 12,
+    marginLeft: 2,
+  },
   dropdown: {
     position: "absolute",
-    top: 70,
-    right: 16,
-    backgroundColor: "#121C3A",
-    borderRadius: 14,
-    paddingVertical: 8,
-    width: 180,
+    top: 95,
+    right: 0,
+    backgroundColor: "#0F1C3A",
+    borderRadius: 16,
+    paddingVertical: 6,
+    width: 210,
     zIndex: 100,
-    elevation: 6,
+    elevation: 10,
+    borderWidth: 1,
+    borderColor: "#1E2D50",
   },
-
   dropdownItem: {
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
-    paddingVertical: 10,
-    paddingHorizontal: 14,
+    paddingVertical: 11,
+    paddingHorizontal: 16,
   },
-
   dropdownText: {
-    color: "#fff",
+    color: "#CBD5E8",
     fontSize: 14,
     fontWeight: "500",
   },
-
+  dropdownDivider: {
+    height: 1,
+    backgroundColor: "#1E2D50",
+    marginVertical: 4,
+    marginHorizontal: 12,
+  },
   card: {
-    backgroundColor: "#121C3A",
-    borderRadius: 18,
+    backgroundColor: "#0F1C3A",
+    borderRadius: 20,
     padding: 16,
-    marginBottom: 18,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: "#1A2B4A",
   },
-
-  cardHeader: {
+  cardCovoiturage: {
+    borderLeftWidth: 3,
+    borderLeftColor: "#4DA3FF",
+  },
+  cardUrbain: {
+    borderLeftWidth: 3,
+    borderLeftColor: "#3DDC97",
+  },
+  cardInterurbain: {
+    borderLeftWidth: 3,
+    borderLeftColor: "#FFC107",
+  },
+  cardHeaderRow: {
     flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    marginBottom: 8,
-  },
-
-  cardTitle: {
-    color: "#fff",
-    fontSize: 17,
-    fontWeight: "600",
-  },
-
-  cardSubtitle: {
-    color: "#9AA4BF",
+    alignItems: "flex-start",
+    gap: 12,
     marginBottom: 14,
   },
-
+  iconBadge: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: "#0D2040",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  cardTitle: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "700",
+    marginBottom: 2,
+  },
+  tagDakar: {
+    color: "#3DDC97",
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  cardSubtitle: {
+    color: "#5A6A8A",
+    fontSize: 13,
+  },
   row: {
     flexDirection: "row",
     gap: 10,
   },
-
   actionBtn: {
     flex: 1,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 8,
-    paddingVertical: 14,
-    borderRadius: 14,
-  },
-
-  primaryBtn: {
-    backgroundColor: "#2563EB",
-  },
-
-  secondaryBtn: {
-    backgroundColor: "#1D4ED8",
-  },
-
-  transportBtn: {
-    flex: 1,
-    paddingVertical: 16,
-    borderRadius: 14,
-    alignItems: "center",
     gap: 6,
+    paddingVertical: 13,
+    borderRadius: 14,
   },
-
+  primaryBtn: {
+    backgroundColor: "#1A4ED8",
+  },
+  secondaryBtn: {
+    backgroundColor: "#162D6B",
+  },
+  urbainBtn: {
+    backgroundColor: "#0D4A35",
+  },
+  interurbainBtn: {
+    backgroundColor: "#3A2800",
+  },
   btnText: {
     color: "#fff",
     fontWeight: "600",
+    fontSize: 13,
   },
-
   favoriteItem: {
     flexDirection: "row",
     justifyContent: "space-between",
-    paddingVertical: 12,
+    alignItems: "center",
+    paddingVertical: 13,
     borderBottomWidth: 1,
-    borderBottomColor: "#1F2A52",
+    borderBottomColor: "#152040",
   },
-
+  favoriteLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  dot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
   favoriteText: {
-    color: "#fff",
+    color: "#CBD5E8",
+    fontSize: 14,
+    fontWeight: "500",
   },
-
   time: {
     color: "#FACC15",
-    fontWeight: "600",
+    fontWeight: "700",
+    fontSize: 14,
   },
-
   addFav: {
+    flexDirection: "row",
     alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
     marginTop: 12,
+    paddingVertical: 8,
   },
-
   addFavText: {
     color: "#4DA3FF",
     fontWeight: "600",
+    fontSize: 14,
   },
 });
