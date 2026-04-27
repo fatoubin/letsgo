@@ -58,7 +58,6 @@ export default function DriverTripMapScreen() {
   const lastLocationSentRef = useRef<number>(0);
   const isFetchingRef = useRef(false);
   const lastFetchTimeRef = useRef(0);
-  const lastPositionRef = useRef<Coordinates | null>(null);
   const navigationStartedRef = useRef(false);
 
   const [driverId, setDriverId] = useState<number | null>(null);
@@ -71,6 +70,7 @@ export default function DriverTripMapScreen() {
   const [eta, setEta] = useState("");
   const [remainingDistance, setRemainingDistance] = useState(0);
   const [tripCompleted, setTripCompleted] = useState(false);
+  const [geocodingStatus, setGeocodingStatus] = useState("");
 
   // 🧭 Boussole
   const [heading, setHeading] = useState(0);
@@ -85,23 +85,62 @@ export default function DriverTripMapScreen() {
   // 📍 Récupérer driverId
   useEffect(() => {
     const loadDriverId = async () => {
-      const stored = await SecureStore.getItemAsync("driverId");
-      if (stored) setDriverId(Number(stored));
+      try {
+        const stored = await SecureStore.getItemAsync("driverId");
+        console.log("📱 DriverId récupéré:", stored);
+        if (stored) {
+          setDriverId(Number(stored));
+        } else {
+          console.log("⚠️ Aucun driverId trouvé dans SecureStore");
+        }
+      } catch (error) {
+        console.log("❌ Erreur lecture driverId:", error);
+      }
     };
     loadDriverId();
   }, []);
 
+  // 📍 Récupérer la position GPS initiale
+  useEffect(() => {
+    const getInitialLocation = async () => {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== "granted") {
+        Alert.alert("Erreur", "Permission GPS refusée");
+        return;
+      }
+      
+      const location = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.High,
+      });
+      
+      const pos = {
+        latitude: location.coords.latitude,
+        longitude: location.coords.longitude,
+      };
+      console.log("📍 Position initiale:", pos);
+      setDriverLocation(pos);
+    };
+    
+    getInitialLocation();
+  }, []);
+
   // 🗺️ Géocoder la destination
   useEffect(() => {
-    if (!trip?.destination) return;
+    if (!trip?.destination) {
+      console.log("⚠️ Pas de destination dans le trip");
+      return;
+    }
 
     const geocodeDestination = async () => {
       try {
+        setGeocodingStatus(`Recherche de ${trip.destination}...`);
         const destName = trip.destination.toLowerCase().trim();
         
         // Vérifier le cache
         if (geocodingCache[destName]) {
+          console.log("✅ Destination trouvée dans le cache:", geocodingCache[destName]);
           setEndPoint(geocodingCache[destName]);
+          setGeocodingStatus("");
           setLoading(false);
           return;
         }
@@ -110,45 +149,151 @@ export default function DriverTripMapScreen() {
         let found = false;
         for (const [city, coords] of Object.entries(SENEGAL_CITIES)) {
           if (destName.includes(city) || city.includes(destName)) {
+            console.log(`✅ Destination trouvée dans la base locale: ${city}`);
             geocodingCache[destName] = coords;
             setEndPoint(coords);
             found = true;
+            setGeocodingStatus("");
             setLoading(false);
             break;
           }
         }
 
-        if (!found) {
+        if (!found && GOOGLE_MAPS_KEY) {
           // Tentative avec Google Maps API
+          setGeocodingStatus(`Recherche sur Google Maps...`);
           let searchName = trip.destination;
           if (searchName.toLowerCase() === "thies") searchName = "Thiès";
           
           const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(searchName + ", Sénégal")}&region=sn&key=${GOOGLE_MAPS_KEY}`;
+          console.log("🌐 Appel Google Geocoding:", url);
+          
           const res = await fetch(url);
           const json = await res.json();
           
           if (json.status === "OK" && json.results?.length) {
             const loc = json.results[0].geometry.location;
             const coords = { latitude: loc.lat, longitude: loc.lng };
+            console.log("✅ Géocodage Google réussi:", coords);
             geocodingCache[destName] = coords;
             setEndPoint(coords);
+            setGeocodingStatus("");
           } else {
+            console.log("❌ Google Geocoding échec:", json.status);
             // Fallback Dakar
             const fallback = { latitude: 14.6937, longitude: -17.4441 };
             geocodingCache[destName] = fallback;
             setEndPoint(fallback);
+            setGeocodingStatus(`⚠️ Destination approximative: ${trip.destination}`);
           }
+        } else if (!found) {
+          // Fallback Dakar
+          const fallback = { latitude: 14.6937, longitude: -17.4441 };
+          geocodingCache[destName] = fallback;
+          setEndPoint(fallback);
+          setGeocodingStatus(`⚠️ Destination approximative: ${trip.destination}`);
         }
       } catch (e) {
         console.log("❌ Erreur géocodage:", e);
         setEndPoint({ latitude: 14.6937, longitude: -17.4441 });
+        setGeocodingStatus("Erreur de localisation");
       } finally {
-        setLoading(false);
+        setTimeout(() => {
+          setLoading(false);
+        }, 1000);
       }
     };
 
     geocodeDestination();
   }, [trip]);
+
+  // 🗺️ Calcul de l'itinéraire (Google Directions API)
+  const fetchRoute = async () => {
+    if (!driverLocation || !endPoint) {
+      console.log("⚠️ Pas de position ou destination pour fetchRoute");
+      return;
+    }
+
+    const now = Date.now();
+    if (isFetchingRef.current || now - lastFetchTimeRef.current < 10000) {
+      console.log("⏳ Route en cours de calcul ou trop récente");
+      return;
+    }
+
+    isFetchingRef.current = true;
+    lastFetchTimeRef.current = now;
+
+    const cacheKey = `${driverLocation.latitude.toFixed(4)},${driverLocation.longitude.toFixed(4)}-${endPoint.latitude.toFixed(4)},${endPoint.longitude.toFixed(4)}`;
+    if (routesCache[cacheKey]) {
+      console.log("✅ Route trouvée dans le cache");
+      setRouteCoords(routesCache[cacheKey]);
+      isFetchingRef.current = false;
+      return;
+    }
+
+    try {
+      console.log("🌐 Appel Directions API...");
+      const url = `https://maps.googleapis.com/maps/api/directions/json?origin=${driverLocation.latitude},${driverLocation.longitude}&destination=${endPoint.latitude},${endPoint.longitude}&mode=driving&key=${GOOGLE_MAPS_KEY}&language=fr`;
+      
+      const res = await fetch(url);
+      const json = await res.json();
+
+      if (json.status === "OK" && json.routes?.length) {
+        const route = json.routes[0];
+        const leg = route.legs[0];
+        
+        const points = decodePolyline(route.overview_polyline.points);
+        routesCache[cacheKey] = points;
+        setRouteCoords(points);
+        
+        setRouteInfo({
+          duration: leg.duration.text,
+          distance: leg.distance.text,
+          steps: leg.steps,
+        });
+        
+        setEta(`${leg.duration.text} • ${leg.distance.text}`);
+        
+        const dist = calculateDistance(driverLocation, endPoint);
+        setRemainingDistance(dist);
+        console.log("✅ Itinéraire calculé:", leg.distance.text, leg.duration.text);
+      } else {
+        console.log("❌ Directions API échec:", json.status);
+        fallbackRoute();
+      }
+    } catch (e) {
+      console.log("❌ Directions API error:", e);
+      fallbackRoute();
+    } finally {
+      isFetchingRef.current = false;
+    }
+  };
+
+  // Fallback ligne droite
+  const fallbackRoute = () => {
+    if (!driverLocation || !endPoint) return;
+    console.log("📍 Utilisation du fallback ligne droite");
+    const points: Coordinates[] = [];
+    for (let i = 0; i <= 30; i++) {
+      const t = i / 30;
+      points.push({
+        latitude: driverLocation.latitude + (endPoint.latitude - driverLocation.latitude) * t,
+        longitude: driverLocation.longitude + (endPoint.longitude - driverLocation.longitude) * t,
+      });
+    }
+    setRouteCoords(points);
+    const dist = calculateDistance(driverLocation, endPoint);
+    setRemainingDistance(dist);
+    setEta(`${(dist / 1000).toFixed(1)} km (estimation)`);
+  };
+
+  // Calculer l'itinéraire quand les positions sont disponibles
+  useEffect(() => {
+    if (driverLocation && endPoint && !loading) {
+      console.log("🔄 Calcul de l'itinéraire...");
+      fetchRoute();
+    }
+  }, [driverLocation, endPoint, loading]);
 
   // 📍 GPS (uniquement si navigation active)
 useEffect(() => {
@@ -173,23 +318,23 @@ useEffect(() => {
           longitude: location.coords.longitude,
         };
 
-        const endPoint = {
-          latitude: location.coords.latitude,
-          longitude: location.coords.longitude,
-        };
-
         setDriverLocation(pos);
-        lastPositionRef.current = pos;
 
-        // ✅ Calculer la distance restante
-        const distanceToDestination = calculateDistance(pos, endPoint);
-        setRemainingDistance(distanceToDestination);
-        
-        const distKm = (distanceToDestination / 1000).toFixed(1);
-        const timeMin = Math.round(distanceToDestination / 1000 / 60 * 60);
-        setEta(timeMin < 60 ? `${timeMin} min` : `${Math.floor(timeMin / 60)}h ${timeMin % 60}min`);
+        // Calculer la distance restante
+        if (endPoint) {
+          const distanceToDestination = calculateDistance(pos, endPoint);
+          setRemainingDistance(distanceToDestination);
+          
+          const timeMin = Math.round(distanceToDestination / 1000 / 60 * 60);
+          setEta(timeMin < 60 ? `${timeMin} min` : `${Math.floor(timeMin / 60)}h ${timeMin % 60}min`);
 
-        // Envoyer position au serveur (throttle 4 secondes)
+          // Vérifier arrivée
+          if (distanceToDestination < 100 && !tripCompleted) {
+            handleArriveAtDestination();
+          }
+        }
+
+        // Envoyer position au serveur
         const now = Date.now();
         if (driverId && now - lastLocationSentRef.current >= 4000) {
           lastLocationSentRef.current = now;
@@ -211,11 +356,6 @@ useEffect(() => {
             console.log("❌ Erreur envoi position:", error);
           }
         }
-
-        // ✅ Vérifier si arrivé à destination (utiliser distanceToDestination)
-        if (endPoint && distanceToDestination < 100 && !tripCompleted) {
-          handleArriveAtDestination();
-        }
       }
     );
   };
@@ -228,83 +368,13 @@ useEffect(() => {
   };
 }, [navigationActive, driverId, endPoint]);
 
-  // 🗺️ Calcul de l'itinéraire (Google Directions API)
-  const fetchRoute = async () => {
-    if (!driverLocation || !endPoint) return;
-
-    const now = Date.now();
-    if (isFetchingRef.current || now - lastFetchTimeRef.current < 10000) {
-      return;
-    }
-
-    isFetchingRef.current = true;
-    lastFetchTimeRef.current = now;
-
-    const cacheKey = `${driverLocation.latitude},${driverLocation.longitude}-${endPoint.latitude},${endPoint.longitude}`;
-    if (routesCache[cacheKey]) {
-      setRouteCoords(routesCache[cacheKey]);
-      isFetchingRef.current = false;
-      return;
-    }
-
-    try {
-      const url = `https://maps.googleapis.com/maps/api/directions/json?origin=${driverLocation.latitude},${driverLocation.longitude}&destination=${endPoint.latitude},${endPoint.longitude}&mode=driving&key=${GOOGLE_MAPS_KEY}&language=fr`;
-      
-      const res = await fetch(url);
-      const json = await res.json();
-
-      if (json.status === "OK" && json.routes?.length) {
-        const route = json.routes[0];
-        const leg = route.legs[0];
-        
-        const points = decodePolyline(route.overview_polyline.points);
-        routesCache[cacheKey] = points;
-        setRouteCoords(points);
-        
-        setRouteInfo({
-          duration: leg.duration.text,
-          distance: leg.distance.text,
-          steps: leg.steps,
-        });
-        
-        setEta(`${leg.duration.text} • ${leg.distance.text}`);
-        
-        const dist = calculateDistance(driverLocation, endPoint);
-        setRemainingDistance(dist);
-      } else {
-        fallbackRoute();
-      }
-    } catch (e) {
-      console.log("❌ Directions API error:", e);
-      fallbackRoute();
-    } finally {
-      isFetchingRef.current = false;
-    }
-  };
-
-  // Fallback ligne droite
-  const fallbackRoute = () => {
-    if (!driverLocation || !endPoint) return;
-    const points: Coordinates[] = [];
-    for (let i = 0; i <= 30; i++) {
-      const t = i / 30;
-      points.push({
-        latitude: driverLocation.latitude + (endPoint.latitude - driverLocation.latitude) * t,
-        longitude: driverLocation.longitude + (endPoint.longitude - driverLocation.longitude) * t,
-      });
-    }
-    setRouteCoords(points);
-    const dist = calculateDistance(driverLocation, endPoint);
-    setRemainingDistance(dist);
-    setEta(`${(dist / 1000).toFixed(1)} km (estimation)`);
-  };
-
   // Démarrage de la navigation
   const startNavigation = () => {
     if (!driverLocation || !endPoint) {
       Alert.alert("Erreur", "Position ou destination non disponible");
       return;
     }
+    console.log("🚀 Démarrage navigation");
     setNavigationActive(true);
     navigationStartedRef.current = true;
     fetchRoute();
@@ -312,36 +382,35 @@ useEffect(() => {
   };
 
   // Arrivée à destination
-const handleArriveAtDestination = () => {
-  if (tripCompleted) return;
-  setTripCompleted(true);
-  setNavigationActive(false);
-  
-  Speech.speak("Vous êtes arrivé à destination. Terminez la course.", { language: "fr" });
-  
-  Alert.alert(
-    "Arrivée à destination",
-    "Vous êtes arrivé. Souhaitez-vous terminer la course ?",
-    [
-      { text: "Continuer", style: "cancel", onPress: () => {
-          setNavigationActive(true);
-          setTripCompleted(false);
+  const handleArriveAtDestination = () => {
+    if (tripCompleted) return;
+    setTripCompleted(true);
+    setNavigationActive(false);
+    
+    Speech.speak("Vous êtes arrivé à destination. Terminez la course.", { language: "fr" });
+    
+    Alert.alert(
+      "Arrivée à destination",
+      "Vous êtes arrivé. Souhaitez-vous terminer la course ?",
+      [
+        { text: "Continuer", style: "cancel", onPress: () => {
+            setNavigationActive(true);
+            setTripCompleted(false);
+          }
+        },
+        {
+          text: "Terminer la course",
+          onPress: () => completeTrip()
         }
-      },
-      {
-        text: "Terminer la course",
-        onPress: () => completeTrip()
-      }
-    ]
-  );
-};
+      ]
+    );
+  };
 
-  // Terminer le trajet et rediriger vers paiement
+  // Terminer le trajet
   const completeTrip = async () => {
     try {
       const token = await SecureStore.getItemAsync("token");
       
-      // Marquer le trajet comme terminé
       await fetch(`${API_URL}/api/trips/complete/${trip?.id}`, {
         method: "POST",
         headers: {
@@ -398,32 +467,19 @@ const handleArriveAtDestination = () => {
     return points;
   };
 
-  // Recalcul route quand position change (si navigation active)
-  useEffect(() => {
-    if (navigationActive && driverLocation && endPoint && routeCoords.length > 0) {
-      // Vérifier si déviation > 100m
-      let minDistance = Infinity;
-      routeCoords.forEach(p => {
-        const dist = calculateDistance(driverLocation, p);
-        if (dist < minDistance) minDistance = dist;
-      });
-      if (minDistance > 100) {
-        fetchRoute();
-      }
-    }
-  }, [driverLocation]);
-
-  useEffect(() => {
-    if (driverLocation && endPoint && navigationActive) {
-      fetchRoute();
-    }
-  }, [driverLocation, endPoint, navigationActive]);
-
   if (loading || !driverLocation || !endPoint) {
     return (
       <View style={styles.center}>
         <ActivityIndicator size="large" color={COLORS.primary} />
-        <Text style={styles.loadingText}>Préparation de la navigation...</Text>
+        <Text style={styles.loadingText}>
+          {geocodingStatus || "Préparation de la navigation..."}
+        </Text>
+        {!driverLocation && (
+          <Text style={styles.destinationText}>🔍 Récupération de votre position...</Text>
+        )}
+        {driverLocation && !endPoint && (
+          <Text style={styles.destinationText}>🔍 Localisation de {trip?.destination}...</Text>
+        )}
         {trip?.destination && (
           <Text style={styles.destinationText}>Vers : {trip.destination}</Text>
         )}
@@ -505,9 +561,15 @@ const handleArriveAtDestination = () => {
       </TouchableOpacity>
 
       {/* Bouton Démarrer / Terminer la navigation */}
-      {!navigationActive && !tripCompleted && (
+      {!navigationActive && !tripCompleted && routeCoords.length > 0 && (
         <TouchableOpacity style={styles.startButton} onPress={startNavigation}>
           <Text style={styles.startButtonText}>▶ Démarrer la navigation</Text>
+        </TouchableOpacity>
+      )}
+
+      {!navigationActive && !tripCompleted && routeCoords.length === 0 && (
+        <TouchableOpacity style={styles.startButtonDisabled} disabled>
+          <Text style={styles.startButtonText}>⏳ Calcul de l'itinéraire...</Text>
         </TouchableOpacity>
       )}
 
@@ -529,7 +591,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     backgroundColor: "#1a1a2e",
   },
-  loadingText: { marginTop: 10, color: COLORS.textLight },
+  loadingText: { marginTop: 10, color: COLORS.textLight, fontSize: 14 },
   destinationText: { marginTop: 6, color: "#999", fontSize: 13 },
   infoBanner: {
     position: "absolute",
@@ -592,6 +654,17 @@ const styles = StyleSheet.create({
     left: 20,
     right: 20,
     backgroundColor: COLORS.success,
+    paddingVertical: 16,
+    borderRadius: 30,
+    alignItems: "center",
+    zIndex: 10,
+  },
+  startButtonDisabled: {
+    position: "absolute",
+    bottom: 30,
+    left: 20,
+    right: 20,
+    backgroundColor: "#999",
     paddingVertical: 16,
     borderRadius: 30,
     alignItems: "center",
