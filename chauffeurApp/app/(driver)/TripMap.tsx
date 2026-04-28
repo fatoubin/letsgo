@@ -290,7 +290,6 @@ export default function DriverTripMapScreen() {
   // Calculer l'itinéraire quand les positions sont disponibles
   useEffect(() => {
     if (driverLocation && endPoint && !loading) {
-      console.log("🔄 Calcul de l'itinéraire...");
       fetchRoute();
     }
   }, [driverLocation, endPoint, loading]);
@@ -407,30 +406,35 @@ useEffect(() => {
   };
 
   // Terminer le trajet
-  const completeTrip = async () => {
-    try {
-      const token = await SecureStore.getItemAsync("token");
-      
-      await fetch(`${API_URL}/api/trips/complete/${trip?.id}`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-      });
-      
+const completeTrip = async () => {
+  try {
+    const token = await SecureStore.getItemAsync("token");
+    
+    // Appeler l'API pour marquer le trajet comme terminé
+    const response = await fetch(`${API_URL}/api/trips/complete/${trip?.id}`, {
+      method: "PUT",  // Utiliser PUT pour la mise à jour
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    const result = await response.json();
+    
+    if (response.ok) {
       Alert.alert(
         "Course terminée",
-        "Le client a été redirigé vers la page de paiement.",
+        "Le trajet a été marqué comme terminé et a été retiré de votre liste active.",
         [{ text: "OK", onPress: () => router.back() }]
       );
-    } catch (error) {
-      console.log("❌ Erreur fin course:", error);
-      Alert.alert("Succès", "Course terminée avec succès", [
-        { text: "OK", onPress: () => router.back() }
-      ]);
+    } else {
+      Alert.alert("Erreur", result.message || "Impossible de terminer la course");
     }
-  };
+  } catch (error) {
+    console.log("❌ Erreur fin course:", error);
+    Alert.alert("Erreur", "Impossible de terminer la course");
+  }
+};
 
   // Calcul de distance (Haversine)
   const calculateDistance = (point1: Coordinates, point2: Coordinates): number => {

@@ -514,13 +514,14 @@ app.get("/api/driver/profile", authenticateDriver, (req, res) => {
   );
 });
 
-// ── Trajets du chauffeur ──
+// ── Trajets actifs du chauffeur (exclure les terminés) ──
 app.get("/api/driver/my_trips", authenticateDriver, (req, res) => {
   const { driver_id } = req.query;
   if (!driver_id) return res.status(400).json({ message: "driver_id requis" });
 
+  // Ne récupérer que les trajets non terminés (status != 'completed')
   db.query(
-    "SELECT * FROM trajets WHERE user_id = (SELECT user_id FROM drivers WHERE id = ?) ORDER BY heure DESC",
+    "SELECT * FROM trajets WHERE user_id = (SELECT user_id FROM drivers WHERE id = ?) AND (status IS NULL OR status != 'completed') ORDER BY heure DESC",
     [driver_id],
     (err, results) => {
       if (err) return res.status(500).json({ message: "Erreur serveur" });
@@ -541,6 +542,36 @@ app.post("/api/trips/create", authenticateDriver, (req, res) => {
     (err, result) => {
       if (err) return res.status(500).json({ message: "Erreur création trajet" });
       res.status(201).json({ message: "Trajet créé", tripId: result.insertId });
+    }
+  );
+});
+
+// ── Marquer un trajet comme terminé (soft delete) ──
+app.put("/api/trips/complete/:id", authenticateDriver, (req, res) => {
+  const tripId = req.params.id;
+  
+  console.log(`📝 Marquage du trajet ${tripId} comme terminé`);
+  
+  // Mettre à jour le statut du trajet sans le supprimer
+  db.query(
+    "UPDATE trajets SET status = 'completed', completed_at = NOW() WHERE id = ?",
+    [tripId],
+    (err, result) => {
+      if (err) {
+        console.error("❌ Erreur mise à jour trajet:", err);
+        return res.status(500).json({ message: "Erreur serveur" });
+      }
+      
+      if (result.affectedRows === 0) {
+        return res.status(404).json({ message: "Trajet non trouvé" });
+      }
+      
+      console.log(`✅ Trajet ${tripId} marqué comme terminé`);
+      res.json({ 
+        success: true, 
+        message: "Trajet terminé avec succès",
+        tripId: tripId
+      });
     }
   );
 });
@@ -597,13 +628,14 @@ app.get("/api/trips/reservations", authenticateDriver, (req, res) => {
   });
 });
 
-// ── Stats chauffeur ──
+// ── Stats chauffeur (compte les trajets terminés) ──
 app.get("/api/driver/stats", authenticateDriver, (req, res) => {
   const { driver_id } = req.query;
   if (!driver_id) return res.status(400).json({ message: "driver_id requis" });
 
+  // Compter le nombre total de trajets terminés
   db.query(
-    "SELECT COUNT(*) AS total_trips FROM trajets WHERE user_id = (SELECT user_id FROM drivers WHERE id = ?)",
+    "SELECT COUNT(*) AS total_trips FROM trajets WHERE user_id = (SELECT user_id FROM drivers WHERE id = ?) AND status = 'completed'",
     [driver_id],
     (err, results) => {
       if (err) return res.status(500).json({ message: "Erreur serveur" });
@@ -612,17 +644,41 @@ app.get("/api/driver/stats", authenticateDriver, (req, res) => {
   );
 });
 
-// ── Historique chauffeur ──
+// ── Historique complet (inclut les trajets terminés) ──
 app.get("/api/driver/history", authenticateDriver, (req, res) => {
   const { driver_id } = req.query;
-  if (!driver_id) return res.status(400). json({ message: "driver_id requis" });
+  if (!driver_id) return res.status(400).json({ message: "driver_id requis" });
 
+  // Récupérer TOUS les trajets (y compris terminés) pour l'historique
   db.query(
     "SELECT * FROM trajets WHERE user_id = (SELECT user_id FROM drivers WHERE id = ?) ORDER BY heure DESC",
     [driver_id],
     (err, results) => {
       if (err) return res.status(500).json({ message: "Erreur serveur" });
       res.json(results);
+    }
+  );
+});
+
+// ── Revenus du chauffeur ──
+app.get("/api/driver/revenue", authenticateDriver, (req, res) => {
+  const { driver_id, period } = req.query;
+  
+  let dateCondition = "";
+  if (period === "week") {
+    dateCondition = "AND completed_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)";
+  } else if (period === "month") {
+    dateCondition = "AND completed_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)";
+  }
+  
+  db.query(
+    `SELECT SUM(prix) as total_revenue FROM trajets 
+     WHERE user_id = (SELECT user_id FROM drivers WHERE id = ?) 
+     AND status = 'completed' ${dateCondition}`,
+    [driver_id],
+    (err, results) => {
+      if (err) return res.status(500).json({ message: "Erreur serveur" });
+      res.json({ total_revenue: results[0].total_revenue || 0 });
     }
   );
 });

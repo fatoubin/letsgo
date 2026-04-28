@@ -133,6 +133,11 @@ export async function deleteTrip(tripId: number) {
   });
 }
 
+// Récupérer la note moyenne du chauffeur
+export async function getDriverRating(driverId: number) {
+  return fetchWithAuth(`/api/driver/rating?driver_id=${driverId}`);
+}
+
 /* =========================
    📥 DEMANDES & RÉSERVATIONS
 ========================= */
