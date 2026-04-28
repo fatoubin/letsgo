@@ -95,6 +95,7 @@ export async function getDriverProfile(driverId: number) {
 }
 
 export async function getDriverTrips(driverId: number) {
+  console.log("📤 getDriverTrips appelé avec driverId:", driverId);
   return fetchWithAuth(`/api/driver/my_trips?driver_id=${driverId}`);
 }
 

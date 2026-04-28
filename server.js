@@ -517,14 +517,33 @@ app.get("/api/driver/profile", authenticateDriver, (req, res) => {
 // ── Trajets actifs du chauffeur (exclure les terminés) ──
 app.get("/api/driver/my_trips", authenticateDriver, (req, res) => {
   const { driver_id } = req.query;
-  if (!driver_id) return res.status(400).json({ message: "driver_id requis" });
+  
+  console.log("📥 Appel my_trips - driver_id reçu:", driver_id);
+  console.log("📥 Driver authentifié:", req.driver);
+  
+  // Si driver_id n'est pas passé, utiliser celui du token
+  let driverId = driver_id;
+  if (!driverId && req.driver && req.driver.driverId) {
+    driverId = req.driver.driverId;
+    console.log("📥 Utilisation driverId du token:", driverId);
+  }
+  
+  if (!driverId) {
+    return res.status(400).json({ message: "driver_id requis" });
+  }
 
-  // Ne récupérer que les trajets non terminés (status != 'completed')
   db.query(
-    "SELECT * FROM trajets WHERE user_id = (SELECT user_id FROM drivers WHERE id = ?) AND (status IS NULL OR status != 'completed') ORDER BY heure DESC",
-    [driver_id],
+    `SELECT t.* FROM trajets t 
+     WHERE t.user_id = (SELECT user_id FROM drivers WHERE id = ?) 
+     AND (t.status IS NULL OR t.status != 'completed') 
+     ORDER BY t.heure DESC`,
+    [driverId],
     (err, results) => {
-      if (err) return res.status(500).json({ message: "Erreur serveur" });
+      if (err) {
+        console.error("❌ Erreur SQL:", err);
+        return res.status(500).json({ message: "Erreur serveur", error: err.message });
+      }
+      console.log(`✅ ${results.length} trajets trouvés`);
       res.json(results);
     }
   );
