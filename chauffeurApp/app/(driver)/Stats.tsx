@@ -9,19 +9,15 @@ import {
   TouchableOpacity,
   Dimensions
 } from "react-native";
-
 import * as SecureStore from "expo-secure-store";
-
 import { COLORS } from "../../src/styles/colors";
 import { globalStyles } from "../../src/styles/globalStyles";
-import { getDriverStats, getDriverHistory, API_URL, getToken } from "../../src/services/api";
+import { getDriverStats, getDriverHistory, API_URL, getToken, fetchWithAuth } from "../../src/services/api";
 
 const { width } = Dimensions.get("window");
 
 type Stats = {
   total_trips: number;
-  total_revenue?: number;
-  weekly_revenue?: number[];
 };
 
 type HistoryItem = {
@@ -32,55 +28,119 @@ type HistoryItem = {
   places: number;
   prix?: number;
   status?: string;
+  completed_at?: string;
 };
 
 export default function DriverStatsScreen() {
-
   const [driverId, setDriverId] = useState<number | null>(null);
   const [stats, setStats] = useState<Stats | null>(null);
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [period, setPeriod] = useState<"week" | "month">("week");
-  const [selectedDay, setSelectedDay] = useState<number>(new Date().getDay());
-
-  // Données simulées pour le graphique
-  const weeklyData = [12000, 18000, 15000, 25000, 32000, 28000, 22000];
-  const monthlyData = [45000, 52000, 48000, 60000, 75000, 68000, 55000, 72000, 81000, 65000, 58000, 49000];
   const weekDays = ["LUN", "MAR", "MER", "JEU", "VEN", "SAM", "DIM"];
+  
+  // Données réelles pour le graphique
+  const [weeklyRevenue, setWeeklyRevenue] = useState<number[]>([0, 0, 0, 0, 0, 0, 0]);
+  const [monthlyRevenue, setMonthlyRevenue] = useState<number[]>([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+  const [totalRevenue, setTotalRevenue] = useState(0);
 
   useEffect(() => {
     const init = async () => {
       const stored = await SecureStore.getItemAsync("driverId");
-      if (!stored) { setLoading(false); return; }
+      if (!stored) { 
+        setLoading(false); 
+        return; 
+      }
       const id = Number(stored);
       setDriverId(id);
       await loadStats(id);
+      await loadRevenueData(id);
     };
     init();
   }, []);
 
+  // Charger les stats de base
   const loadStats = async (id: number) => {
     try {
-      // Stats (trajets terminés)
       const statsData = await getDriverStats(id);
       console.log("📥 STATS =", JSON.stringify(statsData));
-      if (statsData) {
-        setStats({
-          ...statsData,
-          total_revenue: 150000,
-          weekly_revenue: weeklyData
-        });
-      }
-
-      // Historique (tous les trajets, y compris terminés)
+      if (statsData) setStats(statsData);
+      
       const historyData = await getDriverHistory(id);
       console.log("📥 HISTORY =", JSON.stringify(historyData));
       setHistory(Array.isArray(historyData) ? historyData : []);
     } catch (e) {
       console.log("❌ DRIVER STATS ERROR", e);
+    }
+  };
+
+  // Charger les données de revenus réelles depuis le backend
+  const loadRevenueData = async (id: number) => {
+    try {
+      const token = await getToken();
+      if (!token) return;
+
+      // Récupérer toutes les données de revenus
+      const response = await fetch(`${API_URL}/api/driver/revenue/all?driver_id=${id}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        console.log("📥 REVENUE DATA =", JSON.stringify(data));
+        
+        if (data.weekly) setWeeklyRevenue(data.weekly);
+        if (data.monthly) setMonthlyRevenue(data.monthly);
+        if (data.total !== undefined) setTotalRevenue(data.total);
+      }
+    } catch (e) {
+      console.log("❌ Erreur chargement revenus:", e);
+      // Fallback: calculer à partir de l'historique
+      calculateRevenueFromHistory();
     } finally {
       setLoading(false);
     }
+  };
+
+  // Calculer les revenus à partir de l'historique (fallback)
+  const calculateRevenueFromHistory = () => {
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth();
+    
+    // Initialiser les tableaux
+    const weekRev = [0, 0, 0, 0, 0, 0, 0];
+    const monthRev = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+    let total = 0;
+    
+    // Filtrer les trajets terminés
+    const completedTrips = history.filter(trip => trip.status === "completed");
+    
+    completedTrips.forEach(trip => {
+      const tripDate = new Date(trip.heure);
+      const tripYear = tripDate.getFullYear();
+      const tripMonth = tripDate.getMonth();
+      const tripDay = tripDate.getDay(); // 0-6 (dimanche=0)
+      
+      // Revenus du mois (année en cours)
+      if (tripYear === currentYear && tripMonth === currentMonth) {
+        const dayIndex = tripDay === 0 ? 6 : tripDay - 1; // Convertir pour commencer lundi
+        if (dayIndex >= 0 && dayIndex < 7) {
+          weekRev[dayIndex] += trip.prix || 0;
+        }
+      }
+      
+      // Revenus par mois
+      if (tripYear === currentYear) {
+        monthRev[tripMonth] += trip.prix || 0;
+      }
+      
+      total += trip.prix || 0;
+    });
+    
+    setWeeklyRevenue(weekRev);
+    setMonthlyRevenue(monthRev);
+    setTotalRevenue(total);
   };
 
   const getStatusLabel = (status?: string) => {
@@ -93,17 +153,24 @@ export default function DriverStatsScreen() {
   };
 
   const getMaxValue = () => {
-    const data = period === "week" ? weeklyData : monthlyData.slice(0, 7);
+    const data = period === "week" ? weeklyRevenue : monthlyRevenue.slice(0, 7);
     return Math.max(...data, 1000);
   };
 
   const getBarHeight = (value: number) => {
     const maxValue = getMaxValue();
-    return (value / maxValue) * 80; // Hauteur max 80px
+    return (value / maxValue) * 80;
   };
 
-  const totalRevenue = stats?.total_revenue || 
-    history.reduce((sum, item) => sum + (item.prix || 0), 0);
+  const getCurrentPeriodData = () => {
+    if (period === "week") {
+      return weeklyRevenue;
+    } else {
+      const now = new Date();
+      const currentMonth = now.getMonth();
+      return monthlyRevenue.slice(0, currentMonth + 1);
+    }
+  };
 
   if (loading) {
     return (
@@ -120,7 +187,6 @@ export default function DriverStatsScreen() {
       showsVerticalScrollIndicator={false}
       contentContainerStyle={styles.scrollContent}
     >
-      {/* Titre */}
       <Text style={styles.title}>Statistiques</Text>
 
       {/* Cartes statistiques */}
@@ -141,17 +207,13 @@ export default function DriverStatsScreen() {
           style={[styles.periodButton, period === "week" && styles.periodButtonActive]}
           onPress={() => setPeriod("week")}
         >
-          <Text style={[styles.periodText, period === "week" && styles.periodTextActive]}>
-            Semaine
-          </Text>
+          <Text style={[styles.periodText, period === "week" && styles.periodTextActive]}>Semaine</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.periodButton, period === "month" && styles.periodButtonActive]}
           onPress={() => setPeriod("month")}
         >
-          <Text style={[styles.periodText, period === "month" && styles.periodTextActive]}>
-            Mois
-          </Text>
+          <Text style={[styles.periodText, period === "month" && styles.periodTextActive]}>Mois</Text>
         </TouchableOpacity>
       </View>
 
@@ -159,18 +221,14 @@ export default function DriverStatsScreen() {
       <View style={styles.revenueCard}>
         <Text style={styles.revenueTitle}>Revenus de la période</Text>
         <Text style={styles.revenueTotal}>Total: {formatPrice(totalRevenue)}</Text>
+        <Text style={styles.revenueNote}>Basé sur les {stats?.total_trips ?? 0} trajets terminés</Text>
 
         {/* Graphique en barres */}
         <View style={styles.chartContainer}>
-          {(period === "week" ? weeklyData : monthlyData.slice(0, 7)).map((value, index) => (
+          {getCurrentPeriodData().map((value, index) => (
             <View key={index} style={styles.barWrapper}>
               <View style={styles.barContainer}>
-                <View 
-                  style={[
-                    styles.bar, 
-                    { height: getBarHeight(value) }
-                  ]} 
-                />
+                <View style={[styles.bar, { height: getBarHeight(value) }]} />
               </View>
               <Text style={styles.barLabel}>
                 {period === "week" ? weekDays[index] : `${index + 1}`}
@@ -186,13 +244,10 @@ export default function DriverStatsScreen() {
       {history.length === 0 ? (
         <View style={styles.emptyContainer}>
           <Text style={styles.emptyText}>Aucun trajet pour le moment</Text>
-          <TouchableOpacity style={styles.emptyButton}>
-            <Text style={styles.emptyButtonText}>Rechercher un trajet</Text>
-          </TouchableOpacity>
         </View>
       ) : (
         <FlatList
-          data={history}
+          data={history.filter(item => item.status === "completed")}
           keyExtractor={(item) => item.id.toString()}
           showsVerticalScrollIndicator={false}
           scrollEnabled={false}
@@ -204,8 +259,8 @@ export default function DriverStatsScreen() {
                   <Text style={styles.historyRoute}>
                     {item.depart} → {item.destination}
                   </Text>
-                  <Text style={[styles.historyPrice, status.color === COLORS.success && styles.activePrice]}>
-                    {formatPrice(item.prix || 5000)}
+                  <Text style={[styles.historyPrice, styles.activePrice]}>
+                    {formatPrice(item.prix || 0)}
                   </Text>
                 </View>
                 
@@ -215,12 +270,8 @@ export default function DriverStatsScreen() {
                   </Text>
                 </View>
 
-                <Text style={styles.historyMeta}>
-                  🕐 {item.heure}
-                </Text>
-                <Text style={styles.historyMeta}>
-                  💺 {item.places} place(s)
-                </Text>
+                <Text style={styles.historyMeta}>🕐 {item.heure}</Text>
+                <Text style={styles.historyMeta}>💺 {item.places} place(s)</Text>
               </View>
             );
           }}
@@ -238,13 +289,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     backgroundColor: "#1a1a2e",
   },
-  loadingText: {
-    marginTop: 10,
-    color: COLORS.textMuted,
-  },
-  scrollContent: {
-    paddingBottom: 40,
-  },
+  loadingText: { marginTop: 10, color: COLORS.textMuted },
+  scrollContent: { paddingBottom: 40 },
   title: {
     fontSize: 26,
     color: COLORS.textLight,
@@ -292,17 +338,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     borderRadius: 10,
   },
-  periodButtonActive: {
-    backgroundColor: COLORS.primary,
-  },
-  periodText: {
-    color: COLORS.textMuted,
-    fontWeight: "600",
-    fontSize: 14,
-  },
-  periodTextActive: {
-    color: "#fff",
-  },
+  periodButtonActive: { backgroundColor: COLORS.primary },
+  periodText: { color: COLORS.textMuted, fontWeight: "600", fontSize: 14 },
+  periodTextActive: { color: "#fff" },
   revenueCard: {
     backgroundColor: "#1F2937",
     borderRadius: 16,
@@ -310,17 +348,9 @@ const styles = StyleSheet.create({
     marginHorizontal: 16,
     marginBottom: 24,
   },
-  revenueTitle: {
-    fontSize: 14,
-    color: COLORS.textMuted,
-    marginBottom: 4,
-  },
-  revenueTotal: {
-    fontSize: 20,
-    fontWeight: "700",
-    color: "#fff",
-    marginBottom: 20,
-  },
+  revenueTitle: { fontSize: 14, color: COLORS.textMuted, marginBottom: 4 },
+  revenueTotal: { fontSize: 20, fontWeight: "700", color: "#fff", marginBottom: 4 },
+  revenueNote: { fontSize: 11, color: COLORS.textMuted, marginBottom: 20 },
   chartContainer: {
     flexDirection: "row",
     justifyContent: "space-around",
@@ -328,26 +358,10 @@ const styles = StyleSheet.create({
     height: 120,
     marginTop: 10,
   },
-  barWrapper: {
-    alignItems: "center",
-    width: 35,
-  },
-  barContainer: {
-    height: 80,
-    justifyContent: "flex-end",
-    marginBottom: 8,
-  },
-  bar: {
-    width: 24,
-    backgroundColor: COLORS.primary,
-    borderRadius: 6,
-    minHeight: 4,
-  },
-  barLabel: {
-    fontSize: 10,
-    color: COLORS.textMuted,
-    textAlign: "center",
-  },
+  barWrapper: { alignItems: "center", width: 35 },
+  barContainer: { height: 80, justifyContent: "flex-end", marginBottom: 8 },
+  bar: { width: 24, backgroundColor: COLORS.primary, borderRadius: 6, minHeight: 4 },
+  barLabel: { fontSize: 10, color: COLORS.textMuted, textAlign: "center" },
   sectionTitle: {
     fontSize: 18,
     fontWeight: "600",
@@ -369,51 +383,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: 8,
   },
-  historyRoute: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#fff",
-    flex: 1,
-  },
-  historyPrice: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: "#6B7280",
-  },
-  activePrice: {
-    color: COLORS.primary,
-  },
-  historyRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 8,
-  },
-  historyStatus: {
-    fontSize: 13,
-    fontWeight: "500",
-  },
-  historyMeta: {
-    fontSize: 13,
-    color: COLORS.textMuted,
-    marginTop: 4,
-  },
-  emptyContainer: {
-    alignItems: "center",
-    paddingVertical: 40,
-  },
-  emptyText: {
-    color: COLORS.textMuted,
-    fontSize: 16,
-    marginBottom: 16,
-  },
-  emptyButton: {
-    backgroundColor: COLORS.primary,
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 20,
-  },
-  emptyButtonText: {
-    color: "#fff",
-    fontWeight: "600",
-  },
+  historyRoute: { fontSize: 16, fontWeight: "600", color: "#fff", flex: 1 },
+  historyPrice: { fontSize: 16, fontWeight: "700", color: "#6B7280" },
+  activePrice: { color: COLORS.primary },
+  historyRow: { flexDirection: "row", alignItems: "center", marginBottom: 8 },
+  historyStatus: { fontSize: 13, fontWeight: "500" },
+  historyMeta: { fontSize: 13, color: COLORS.textMuted, marginTop: 4 },
+  emptyContainer: { alignItems: "center", paddingVertical: 40 },
+  emptyText: { color: COLORS.textMuted, fontSize: 16, marginBottom: 16 },
 });

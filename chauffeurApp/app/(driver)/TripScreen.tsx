@@ -60,43 +60,31 @@ export default function DriverTripsScreen() {
       const id = Number(stored);
       setDriverId(id);
       await fetchTrips(id);
-      await fetchStats(id);
     };
     init();
   }, []);
 
   const fetchTrips = async (id: number) => {
-  try {
-    console.log("📤 Chargement des trajets pour driverId:", id);
-    const data = await getDriverTrips(id);
-    console.log("📥 Réponse brute:", JSON.stringify(data));
-    setTrips(Array.isArray(data) ? data : []);
-    
-    // Calculer les revenus du mois
-    const monthlyTotal = (Array.isArray(data) ? data : []).reduce((sum, trip) => {
-      if (trip.status === "completed") {
-        return sum + (trip.prix || 0);
-      }
-      return sum;
-    }, 0);
-    setMonthlyRevenue(monthlyTotal);
-    
-  } catch (e: any) {
-    console.log("❌ DRIVER TRIPS ERROR", e?.message || e);
-    Alert.alert("Erreur", e?.message || "Impossible de charger les trajets");
-  } finally {
-    setLoading(false);
-    setRefreshing(false);
-  }
-};
-
-  const fetchStats = async (id: number) => {
     try {
-      // Récupérer la note moyenne depuis le backend
-      // const ratingData = await getDriverRating(id);
-      // if (ratingData) setAverageRating(ratingData.average);
+      const data = await getDriverTrips(id);
+      console.log("📥 TRIPS =", JSON.stringify(data));
+      setTrips(Array.isArray(data) ? data : []);
+      
+      // Calculer les revenus du mois
+      const monthlyTotal = (Array.isArray(data) ? data : []).reduce((sum, trip) => {
+        if (trip.status === "completed") {
+          return sum + (trip.prix || 0);
+        }
+        return sum;
+      }, 0);
+      setMonthlyRevenue(monthlyTotal);
+      
     } catch (e) {
-      console.log("❌ Erreur récupération note:", e);
+      console.log("❌ DRIVER TRIPS ERROR", e);
+      Alert.alert("Erreur", "Impossible de charger les trajets");
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
     }
   };
 
@@ -104,7 +92,6 @@ export default function DriverTripsScreen() {
     if (!driverId) return;
     setRefreshing(true);
     fetchTrips(driverId);
-    fetchStats(driverId);
   };
 
   const getStatus = (trip: Trip) => {
@@ -195,23 +182,17 @@ export default function DriverTripsScreen() {
         </Text>
       </View>
 
-   // Remplacer la section des étoiles par ceci :
-
-{/* Cartes de statistiques */}
-<View style={styles.statsContainer}>
-  <View style={styles.statCard}>
-    <Text style={styles.statValue}>{monthlyRevenue.toLocaleString("fr-FR")} FCFA</Text>
-    <Text style={styles.statLabel}>Revenus (mois)</Text>
-  </View>
-  <View style={styles.statCard}>
-    <Text style={styles.statValue}>{averageRating.toFixed(1)}/5</Text>
-    <Text style={styles.statLabel}>Note moyenne</Text>
-    <Text style={styles.starsText}>
-      {Array.from({ length: Math.floor(averageRating) }, () => "★").join("")}
-      {Array.from({ length: 5 - Math.floor(averageRating) }, () => "☆").join("")}
-    </Text>
-  </View>
-</View>
+      {/* Cartes de statistiques */}
+      <View style={styles.statsContainer}>
+        <View style={styles.statCard}>
+          <Text style={styles.statValue}>{monthlyRevenue.toLocaleString("fr-FR")} FCFA</Text>
+          <Text style={styles.statLabel}>Revenus (mois)</Text>
+        </View>
+        <View style={styles.statCard}>
+          <Text style={styles.statValue}>{averageRating.toFixed(1)}/5</Text>
+          <Text style={styles.statLabel}>Note moyenne</Text>
+        </View>
+      </View>
 
       {/* Liste des trajets */}
       <Text style={styles.sectionTitle}>Trajets récents</Text>
@@ -246,7 +227,8 @@ const styles = StyleSheet.create({
   center: {
     flex: 1,
     justifyContent: "center",
-    alignItems: "center"
+    alignItems: "center",
+    backgroundColor: "#1a1a2e",
   },
   header: {
     paddingHorizontal: 16,
@@ -292,11 +274,6 @@ const styles = StyleSheet.create({
   statLabel: {
     fontSize: 12,
     color: COLORS.textMuted,
-  },
-  stars: {
-    fontSize: 12,
-    color: "#FBBF24",
-    marginTop: 4,
   },
   sectionTitle: {
     fontSize: 18,
@@ -371,9 +348,4 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     fontSize: 14,
   },
-  starsText: {
-  fontSize: 12,
-  color: "#FBBF24",
-  marginTop: 4,
-},
 });

@@ -96,8 +96,16 @@ export async function getDriverProfile(driverId: number) {
 
 export async function getDriverTrips(driverId: number) {
   console.log("📤 getDriverTrips appelé avec driverId:", driverId);
-  return fetchWithAuth(`/api/driver/my_trips?driver_id=${driverId}`);
+  try {
+    const result = await fetchWithAuth(`/api/driver/my_trips?driver_id=${driverId}`);
+    console.log("📥 getDriverTrips résultat:", result);
+    return result;
+  } catch (error) {
+    console.error("❌ getDriverTrips error:", error);
+    throw error;
+  }
 }
+
 
 export async function createDriverTrip(payload: {
   driverId: number;

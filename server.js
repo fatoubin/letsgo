@@ -514,39 +514,49 @@ app.get("/api/driver/profile", authenticateDriver, (req, res) => {
   );
 });
 
-// ── Trajets actifs du chauffeur (exclure les terminés) ──
+// ── Trajets du chauffeur (version corrigée) ──
 app.get("/api/driver/my_trips", authenticateDriver, (req, res) => {
   const { driver_id } = req.query;
   
-  console.log("📥 Appel my_trips - driver_id reçu:", driver_id);
-  console.log("📥 Driver authentifié:", req.driver);
+  console.log("📥 [my_trips] driver_id reçu:", driver_id);
+  console.log("📥 [my_trips] req.driver:", req.driver);
   
-  // Si driver_id n'est pas passé, utiliser celui du token
+  // Récupérer le driverId depuis le token si non fourni
   let driverId = driver_id;
   if (!driverId && req.driver && req.driver.driverId) {
     driverId = req.driver.driverId;
-    console.log("📥 Utilisation driverId du token:", driverId);
+    console.log("📥 [my_trips] Utilisation driverId du token:", driverId);
   }
   
   if (!driverId) {
+    console.log("❌ [my_trips] Aucun driver_id trouvé");
     return res.status(400).json({ message: "driver_id requis" });
   }
 
-  db.query(
-    `SELECT t.* FROM trajets t 
-     WHERE t.user_id = (SELECT user_id FROM drivers WHERE id = ?) 
-     AND (t.status IS NULL OR t.status != 'completed') 
-     ORDER BY t.heure DESC`,
-    [driverId],
-    (err, results) => {
-      if (err) {
-        console.error("❌ Erreur SQL:", err);
-        return res.status(500).json({ message: "Erreur serveur", error: err.message });
-      }
-      console.log(`✅ ${results.length} trajets trouvés`);
-      res.json(results);
+  // Requête SQL simplifiée pour tester
+  const sql = `
+    SELECT t.* 
+    FROM trajets t
+    WHERE t.user_id = (SELECT user_id FROM drivers WHERE id = ?)
+    ORDER BY t.heure DESC
+  `;
+  
+  console.log("📝 [my_trips] SQL:", sql);
+  console.log("📝 [my_trips] Paramètre:", driverId);
+  
+  db.query(sql, [driverId], (err, results) => {
+    if (err) {
+      console.error("❌ [my_trips] Erreur SQL:", err);
+      return res.status(500).json({ 
+        message: "Erreur serveur", 
+        error: err.message,
+        code: err.code 
+      });
     }
-  );
+    
+    console.log(`✅ [my_trips] ${results.length} trajets trouvés`);
+    res.json(results);
+  });
 });
 
 // ── Créer un trajet (chauffeur) ──
@@ -700,6 +710,90 @@ app.get("/api/driver/revenue", authenticateDriver, (req, res) => {
       res.json({ total_revenue: results[0].total_revenue || 0 });
     }
   );
+});
+
+// ── Récupérer tous les revenus pour le graphique ──
+app.get("/api/driver/revenue/all", authenticateDriver, (req, res) => {
+  const { driver_id } = req.query;
+  
+  if (!driver_id) {
+    return res.status(400).json({ message: "driver_id requis" });
+  }
+
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const currentMonth = now.getMonth();
+  
+  // Revenus par jour de la semaine (7 derniers jours)
+  const weekQuery = `
+    SELECT DAYOFWEEK(completed_at) as day, SUM(prix) as total
+    FROM trajets 
+    WHERE user_id = (SELECT user_id FROM drivers WHERE id = ?) 
+    AND status = 'completed'
+    AND completed_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+    GROUP BY DAYOFWEEK(completed_at)
+  `;
+  
+  // Revenus par mois
+  const monthQuery = `
+    SELECT MONTH(completed_at) as month, SUM(prix) as total
+    FROM trajets 
+    WHERE user_id = (SELECT user_id FROM drivers WHERE id = ?) 
+    AND status = 'completed'
+    AND YEAR(completed_at) = ?
+    GROUP BY MONTH(completed_at)
+  `;
+  
+  // Total général
+  const totalQuery = `
+    SELECT SUM(prix) as total
+    FROM trajets 
+    WHERE user_id = (SELECT user_id FROM drivers WHERE id = ?) 
+    AND status = 'completed'
+  `;
+  
+  Promise.all([
+    new Promise((resolve, reject) => {
+      db.query(weekQuery, [driver_id], (err, rows) => {
+        if (err) reject(err);
+        else {
+          const weekly = [0, 0, 0, 0, 0, 0, 0];
+          rows.forEach(row => {
+            // DAYOFWEEK: 1=dimanche, 2=lundi...
+            const idx = row.day === 1 ? 6 : row.day - 2;
+            if (idx >= 0 && idx < 7) weekly[idx] = row.total || 0;
+          });
+          resolve(weekly);
+        }
+      });
+    }),
+    new Promise((resolve, reject) => {
+      db.query(monthQuery, [driver_id, currentYear], (err, rows) => {
+        if (err) reject(err);
+        else {
+          const monthly = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+          rows.forEach(row => {
+            const idx = row.month - 1;
+            if (idx >= 0 && idx < 12) monthly[idx] = row.total || 0;
+          });
+          resolve(monthly);
+        }
+      });
+    }),
+    new Promise((resolve, reject) => {
+      db.query(totalQuery, [driver_id], (err, rows) => {
+        if (err) reject(err);
+        else resolve(rows[0]?.total || 0);
+      });
+    })
+  ])
+  .then(([weekly, monthly, total]) => {
+    res.json({ weekly, monthly, total });
+  })
+  .catch(err => {
+    console.error("❌ Erreur revenue:", err);
+    res.status(500).json({ message: "Erreur serveur" });
+  });
 });
 
 // ── Mise à jour position chauffeur ──
