@@ -139,7 +139,7 @@ export default function DriverTripsScreen() {
             style={styles.passengersButton}
             onPress={() => {
               router.push({
-                pathname: "/(driver)/TripReservations",
+                pathname: "/(driver)/TripReservation",
                 params: { tripId: item.id }
               });
             }}

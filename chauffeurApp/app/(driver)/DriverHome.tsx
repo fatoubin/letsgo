@@ -63,9 +63,8 @@ export default function DriverHomeScreen() {
   }, []);
 
   const openDrawer = () => {
-    navigation.dispatch(DrawerActions.openDrawer());
-  };
-
+  (navigation as any).openDrawer();
+    };
   if (loading) {
     return (
       <View style={styles.center}>
