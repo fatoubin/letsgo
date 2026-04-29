@@ -8,9 +8,9 @@ import {
   ActivityIndicator,
   Image
 } from "react-native";
-
 import { useRouter } from "expo-router";
 import * as SecureStore from "expo-secure-store";
+import { DrawerActions } from "@react-navigation/native";
 
 import { COLORS } from "../../src/styles/colors";
 import { globalStyles } from "../../src/styles/globalStyles";
@@ -20,6 +20,7 @@ import { getDriverProfile } from "../../src/services/api";
 export default function DriverHomeScreen() {
 
   const router = useRouter();
+  const navigation = router as any; // Pour accéder à drawerActions
 
   const [driver, setDriver] = useState<any>(null);
   const [driverId, setDriverId] = useState<number | null>(null);
@@ -28,8 +29,6 @@ export default function DriverHomeScreen() {
   useEffect(() => {
     const loadProfile = async () => {
       try {
-
-        // ── Lire driverId depuis SecureStore (sauvegardé au login) ──
         const storedDriverId = await SecureStore.getItemAsync("driverId");
         const storedUser = await SecureStore.getItemAsync("user");
 
@@ -45,11 +44,9 @@ export default function DriverHomeScreen() {
         const id = Number(storedDriverId);
         setDriverId(id);
 
-        // ── Charger le profil depuis l'API ──
         const data = await getDriverProfile(id);
         console.log("📥 DRIVER PROFILE =", JSON.stringify(data));
 
-        // Le backend retourne directement l'objet (pas data.driver)
         if (data) {
           setDriver(data);
         }
@@ -63,6 +60,10 @@ export default function DriverHomeScreen() {
 
     loadProfile();
   }, []);
+
+  const openDrawer = () => {
+    navigation.dispatch(DrawerActions.openDrawer());
+  };
 
   if (loading) {
     return (
@@ -84,7 +85,6 @@ export default function DriverHomeScreen() {
     );
   }
 
-  // ── Adapter les champs du backend ──
   const fullname = `${driver.prenom ?? ""} ${driver.nom ?? ""}`.trim();
   const vehicleName = driver.vehicle_type ?? "Non défini";
   const plateNumber = driver.vehicle_plate ?? "---";
@@ -94,22 +94,20 @@ export default function DriverHomeScreen() {
     <ScrollView style={globalStyles.screen}>
 
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.push("/(driver)/menu")}>
+        <TouchableOpacity onPress={openDrawer}>
           <Text style={styles.menuIcon}>☰</Text>
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Chauffeur</Text>
         <View style={{ width: 30 }} />
       </View>
 
-      {/* ── Carte profil ── */}
+      {/* Carte profil */}
       <View style={styles.profileCard}>
         <View style={styles.profileRow}>
-
           <Image
             source={require("../../assets/avatar.png")}
             style={styles.avatar}
           />
-
           <View style={{ flex: 1 }}>
             <Text style={styles.name}>{fullname || "Chauffeur"}</Text>
             <Text style={styles.rating}>⭐ 4.95 (124 courses)</Text>
@@ -119,16 +117,13 @@ export default function DriverHomeScreen() {
               </Text>
             </View>
           </View>
-
         </View>
       </View>
 
-      {/* ── Carte véhicule ── */}
+      {/* Carte véhicule */}
       <View style={styles.vehicleCard}>
         <View style={styles.vehicleRow}>
-
           <Text style={styles.vehicleIcon}>🚗</Text>
-
           <View style={{ flex: 1 }}>
             <Text style={styles.vehicleLabel}>VÉHICULE ACTUEL</Text>
             <Text style={styles.vehicleName}>{vehicleName}</Text>
@@ -137,17 +132,14 @@ export default function DriverHomeScreen() {
               <Text style={styles.vehicleInfo}>{driver.license_number ?? "?"}</Text>
             </View>
           </View>
-
           <View style={styles.plateBadge}>
             <Text style={styles.plateText}>{plateNumber}</Text>
           </View>
-
         </View>
       </View>
 
-      {/* ── Actions ── */}
+      {/* Actions */}
       <View style={styles.actionsRow}>
-
         <TouchableOpacity
           style={styles.tripCard}
           onPress={() => router.push({ pathname: "/(driver)/TripScreen", params: { driverId } })}
@@ -167,7 +159,6 @@ export default function DriverHomeScreen() {
           </View>
           <Text style={styles.tripTitle}>Ajouter un trajet</Text>
         </TouchableOpacity>
-
       </View>
 
       <PrimaryButton

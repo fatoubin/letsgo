@@ -6,14 +6,16 @@ import {
   FlatList,
   TouchableOpacity,
   ActivityIndicator,
-  Alert
+  Alert,
+  Switch
 } from "react-native";
 
 import * as SecureStore from "expo-secure-store";
 
 import { COLORS } from "../../src/styles/colors";
 import { globalStyles } from "../../src/styles/globalStyles";
-import { getDriverRequests, acceptDemande, rejectDemande,  } from "../../src/services/api";
+import { getDriverRequests, acceptDemande, rejectDemande } from "../../src/services/api";
+
 type Request = {
   id: number;
   depart: string;
@@ -22,6 +24,7 @@ type Request = {
   prenom: string;
   telephone: string;
   places: number;
+  prix?: number;
   status: "pending" | "accepted" | "rejected";
 };
 
@@ -30,6 +33,7 @@ export default function DriverRequestsScreen() {
   const [loading, setLoading] = useState(true);
   const [requests, setRequests] = useState<Request[]>([]);
   const [actionLoading, setActionLoading] = useState<number | null>(null);
+  const [soundEnabled, setSoundEnabled] = useState(true);
 
   useEffect(() => {
     const init = async () => {
@@ -61,39 +65,49 @@ export default function DriverRequestsScreen() {
   };
 
   const handleAccept = async (id: number) => {
-  setActionLoading(id);
-  try {
-    const result = await acceptDemande(id);  // ← utilise demande_action
-    Alert.alert("✅ Succès", "Demande acceptée");
-    if (driverId) await fetchRequests(driverId);
-  } catch (e: any) {
-    Alert.alert("Erreur", e.message || "Action impossible");
-  } finally {
-    setActionLoading(null);
-  }
-};
+    setActionLoading(id);
+    try {
+      await acceptDemande(id);
+      Alert.alert("✅ Succès", "Demande acceptée");
+      if (driverId) await fetchRequests(driverId);
+    } catch (e: any) {
+      Alert.alert("Erreur", e.message || "Action impossible");
+    } finally {
+      setActionLoading(null);
+    }
+  };
 
   const handleReject = async (id: number) => {
-  setActionLoading(id);
-  try {
-    const result = await rejectDemande(id);  // ← utilise demande_action
-    Alert.alert("Refusée", "Demande refusée");
-    if (driverId) await fetchRequests(driverId);
-  } catch (e: any) {
-    Alert.alert("Erreur", e.message || "Action impossible");
-  } finally {
-    setActionLoading(null);
-  }
-};
+    setActionLoading(id);
+    try {
+      await rejectDemande(id);
+      Alert.alert("Refusée", "Demande refusée");
+      if (driverId) await fetchRequests(driverId);
+    } catch (e: any) {
+      Alert.alert("Erreur", e.message || "Action impossible");
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const formatPrice = (price?: number) => {
+    if (!price) return null;
+    return price.toLocaleString("fr-FR") + " FCFA";
+  };
 
   const renderItem = ({ item }: { item: Request }) => (
     <View style={styles.card}>
       <Text style={styles.route}>
         {item.depart} → {item.destination}
       </Text>
-      <Text style={styles.info}>👤 {item.prenom} {item.nom}</Text>
-      <Text style={styles.info}>📞 {item.telephone}</Text>
-      <Text style={styles.info}>💺 {item.places} place(s) demandée(s)</Text>
+      
+      {item.prix && (
+        <Text style={styles.price}>{formatPrice(item.prix)}</Text>
+      )}
+      
+      <Text style={styles.info}>- {item.prenom} {item.nom}</Text>
+      <Text style={styles.info}>- {item.telephone}</Text>
+      <Text style={styles.info}>- {item.places} place(s) demandée(s)</Text>
 
       <View style={styles.actions}>
         {item.status === "pending" && (
@@ -106,7 +120,7 @@ export default function DriverRequestsScreen() {
               {actionLoading === item.id ? (
                 <ActivityIndicator size="small" color="#fff" />
               ) : (
-                <Text style={styles.actionText}>✓ Accepter</Text>
+                <Text style={styles.actionText}>Accepter</Text>
               )}
             </TouchableOpacity>
             <TouchableOpacity 
@@ -117,16 +131,16 @@ export default function DriverRequestsScreen() {
               {actionLoading === item.id ? (
                 <ActivityIndicator size="small" color="#fff" />
               ) : (
-                <Text style={styles.actionText}>✕ Refuser</Text>
+                <Text style={styles.actionText}>Refuser</Text>
               )}
             </TouchableOpacity>
           </>
         )}
         {item.status === "accepted" && (
-          <Text style={[styles.statusText, { color: COLORS.success }]}>✔ Acceptée</Text>
+          <Text style={[styles.statusText, styles.acceptedText]}>Acceptée</Text>
         )}
         {item.status === "rejected" && (
-          <Text style={[styles.statusText, { color: COLORS.danger }]}>✖ Refusée</Text>
+          <Text style={[styles.statusText, styles.rejectedText]}>Refusée</Text>
         )}
       </View>
     </View>
@@ -143,30 +157,161 @@ export default function DriverRequestsScreen() {
   return (
     <View style={globalStyles.screen}>
       <Text style={styles.title}>Demandes de réservations</Text>
-      {requests.length === 0 ? (
-        <Text style={styles.empty}>Aucune demande pour le moment.</Text>
-      ) : (
-        <FlatList
-          data={requests}
-          keyExtractor={(item) => item.id.toString()}
-          renderItem={renderItem}
-          showsVerticalScrollIndicator={false}
+
+      {/* Alerte sonore toggle */}
+      <View style={styles.alertRow}>
+        <Text style={styles.alertText}>Alertes sonores activées pour les nouvelles demandes</Text>
+        <Switch
+          value={soundEnabled}
+          onValueChange={setSoundEnabled}
+          trackColor={{ false: "#767577", true: COLORS.primary }}
+          thumbColor="#fff"
         />
+      </View>
+
+      {requests.length === 0 ? (
+        <View style={styles.emptyContainer}>
+          <Text style={styles.emptyText}>Aucune demande pour le moment.</Text>
+          <Text style={styles.footerMessage}>
+            "Conduisez prudemment, nous veillons sur vos trajets."
+          </Text>
+        </View>
+      ) : (
+        <>
+          <FlatList
+            data={requests}
+            keyExtractor={(item) => item.id.toString()}
+            renderItem={renderItem}
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.listContent}
+          />
+          <Text style={styles.footerMessage}>
+            "Conduisez prudemment, nous veillons sur vos trajets."
+          </Text>
+        </>
       )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  center: { flex: 1, justifyContent: "center", alignItems: "center" },
-  title: { color: COLORS.textLight, fontSize: 22, fontWeight: "600", marginBottom: 20, textAlign: "center" },
-  empty: { color: COLORS.textMuted, textAlign: "center", marginTop: 40, fontSize: 16 },
-  card: { backgroundColor: "#fff", borderRadius: 14, padding: 16, marginBottom: 14 },
-  route: { fontSize: 16, fontWeight: "700", marginBottom: 8, color: "#111" },
-  info: { fontSize: 14, color: "#555", marginBottom: 4 },
-  actions: { flexDirection: "row", justifyContent: "space-between", marginTop: 14, gap: 10 },
-  accept: { backgroundColor: COLORS.success, paddingVertical: 10, paddingHorizontal: 24, borderRadius: 10, flex: 1, alignItems: "center" },
-  reject: { backgroundColor: COLORS.danger, paddingVertical: 10, paddingHorizontal: 24, borderRadius: 10, flex: 1, alignItems: "center" },
-  actionText: { color: "#fff", fontWeight: "600" },
-  statusText: { fontSize: 14, fontWeight: "600", textAlign: "center", paddingVertical: 10, flex: 1 }
+  center: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#1a1a2e",
+  },
+  title: {
+    color: COLORS.textLight,
+    fontSize: 22,
+    fontWeight: "600",
+    marginBottom: 16,
+    marginTop: 12,
+    textAlign: "center",
+  },
+  alertRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    backgroundColor: "#1F2937",
+    marginHorizontal: 16,
+    marginBottom: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 12,
+  },
+  alertText: {
+    color: COLORS.textLight,
+    fontSize: 13,
+    flex: 1,
+    marginRight: 12,
+  },
+  listContent: {
+    paddingHorizontal: 16,
+    paddingBottom: 16,
+  },
+  card: {
+    backgroundColor: "#fff",
+    borderRadius: 14,
+    padding: 16,
+    marginBottom: 14,
+  },
+  route: {
+    fontSize: 16,
+    fontWeight: "700",
+    marginBottom: 6,
+    color: "#111",
+  },
+  price: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: COLORS.primary,
+    marginBottom: 8,
+  },
+  info: {
+    fontSize: 14,
+    color: "#555",
+    marginBottom: 4,
+  },
+  actions: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginTop: 14,
+    gap: 10,
+  },
+  accept: {
+    backgroundColor: COLORS.success,
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 10,
+    flex: 1,
+    alignItems: "center",
+  },
+  reject: {
+    backgroundColor: COLORS.danger,
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 10,
+    flex: 1,
+    alignItems: "center",
+  },
+  actionText: {
+    color: "#fff",
+    fontWeight: "600",
+    fontSize: 14,
+  },
+  statusText: {
+    fontSize: 14,
+    fontWeight: "600",
+    textAlign: "center",
+    paddingVertical: 10,
+    flex: 1,
+  },
+  acceptedText: {
+    color: COLORS.success,
+  },
+  rejectedText: {
+    color: COLORS.danger,
+  },
+  emptyContainer: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 32,
+  },
+  emptyText: {
+    color: COLORS.textMuted,
+    fontSize: 16,
+    textAlign: "center",
+    marginBottom: 40,
+  },
+  footerMessage: {
+    color: COLORS.textMuted,
+    fontSize: 12,
+    textAlign: "center",
+    marginTop: 20,
+    marginBottom: 30,
+    paddingHorizontal: 20,
+    fontStyle: "italic",
+  },
 });
