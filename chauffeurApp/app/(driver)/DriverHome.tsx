@@ -9,6 +9,7 @@ import {
   Image
 } from "react-native";
 import { useRouter } from "expo-router";
+import { useNavigation } from "expo-router";
 import * as SecureStore from "expo-secure-store";
 import { DrawerActions } from "@react-navigation/native";
 
@@ -20,7 +21,7 @@ import { getDriverProfile } from "../../src/services/api";
 export default function DriverHomeScreen() {
 
   const router = useRouter();
-  const navigation = router as any; // Pour accéder à drawerActions
+  const navigation = useNavigation();
 
   const [driver, setDriver] = useState<any>(null);
   const [driverId, setDriverId] = useState<number | null>(null);
