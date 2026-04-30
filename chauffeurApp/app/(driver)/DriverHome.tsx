@@ -109,7 +109,9 @@ export default function DriverHomeScreen() {
             style={styles.avatar}
           />
           <View style={{ flex: 1 }}>
-            <Text style={styles.name}>{fullname || "Chauffeur"}</Text>
+            <TouchableOpacity onPress={() => router.push({ pathname: "/(driver)/Profile", params: { driverId } })}>
+              <Text style={styles.name}>{fullname || "Chauffeur"}</Text>
+            </TouchableOpacity>
             <Text style={styles.rating}>⭐ 4.95 (124 courses)</Text>
             <View style={[styles.statusBadge, { borderColor: COLORS.primary }]}>
               <Text style={[styles.statusText, { color: COLORS.primary }]}>
