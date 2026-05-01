@@ -254,7 +254,7 @@ const fetchTrips = async (id: number) => {
             });
           } else {
             router.push({
-              pathname: "/(driver)/TripMap",
+              pathname: "/(driver)/TripDetails",
               params: { trip: JSON.stringify(item) }
             });
           }
@@ -295,7 +295,7 @@ const fetchTrips = async (id: number) => {
             style={styles.passengersButton}
             onPress={() => {
               router.push({
-                pathname: "/(driver)/TripReservation",
+                pathname: "/(driver)/Reservations",
                 params: { tripId: item.id }
               });
             }}

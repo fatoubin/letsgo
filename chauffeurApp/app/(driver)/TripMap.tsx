@@ -295,77 +295,77 @@ export default function DriverTripMapScreen() {
   }, [driverLocation, endPoint, loading]);
 
   // 📍 GPS (uniquement si navigation active)
-useEffect(() => {
-  if (!navigationActive) return;
+  useEffect(() => {
+    if (!navigationActive) return;
 
-  const startWatching = async () => {
-    const { status } = await Location.requestForegroundPermissionsAsync();
-    if (status !== "granted") {
-      Alert.alert("Erreur", "Permission GPS refusée");
-      return;
-    }
-
-    watchPositionRef.current = await Location.watchPositionAsync(
-      {
-        accuracy: Location.Accuracy.High,
-        timeInterval: 3000,
-        distanceInterval: 10,
-      },
-      async (location) => {
-        const pos = {
-          latitude: location.coords.latitude,
-          longitude: location.coords.longitude,
-        };
-
-        setDriverLocation(pos);
-
-        // Calculer la distance restante
-        if (endPoint) {
-          const distanceToDestination = calculateDistance(pos, endPoint);
-          setRemainingDistance(distanceToDestination);
-          
-          const timeMin = Math.round(distanceToDestination / 1000 / 60 * 60);
-          setEta(timeMin < 60 ? `${timeMin} min` : `${Math.floor(timeMin / 60)}h ${timeMin % 60}min`);
-
-          // Vérifier arrivée
-          if (distanceToDestination < 100 && !tripCompleted) {
-            handleArriveAtDestination();
-          }
-        }
-
-        // Envoyer position au serveur
-        const now = Date.now();
-        if (driverId && now - lastLocationSentRef.current >= 4000) {
-          lastLocationSentRef.current = now;
-          try {
-            const token = await SecureStore.getItemAsync("token");
-            await fetch(`${API_URL}/api/driver/update_location`, {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${token}`,
-              },
-              body: JSON.stringify({
-                driver_id: driverId,
-                lat: pos.latitude,
-                lng: pos.longitude,
-              }),
-            });
-          } catch (error) {
-            console.log("❌ Erreur envoi position:", error);
-          }
-        }
+    const startWatching = async () => {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== "granted") {
+        Alert.alert("Erreur", "Permission GPS refusée");
+        return;
       }
-    );
-  };
 
-  startWatching();
-  return () => {
-    if (watchPositionRef.current) {
-      watchPositionRef.current.remove();
-    }
-  };
-}, [navigationActive, driverId, endPoint]);
+      watchPositionRef.current = await Location.watchPositionAsync(
+        {
+          accuracy: Location.Accuracy.High,
+          timeInterval: 3000,
+          distanceInterval: 10,
+        },
+        async (location) => {
+          const pos = {
+            latitude: location.coords.latitude,
+            longitude: location.coords.longitude,
+          };
+
+          setDriverLocation(pos);
+
+          // Calculer la distance restante
+          if (endPoint) {
+            const distanceToDestination = calculateDistance(pos, endPoint);
+            setRemainingDistance(distanceToDestination);
+            
+            const timeMin = Math.round(distanceToDestination / 1000 / 60 * 60);
+            setEta(timeMin < 60 ? `${timeMin} min` : `${Math.floor(timeMin / 60)}h ${timeMin % 60}min`);
+
+            // Vérifier arrivée
+            if (distanceToDestination < 100 && !tripCompleted) {
+              handleArriveAtDestination();
+            }
+          }
+
+          // Envoyer position au serveur
+          const now = Date.now();
+          if (driverId && now - lastLocationSentRef.current >= 4000) {
+            lastLocationSentRef.current = now;
+            try {
+              const token = await SecureStore.getItemAsync("token");
+              await fetch(`${API_URL}/api/driver/update_location`, {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify({
+                  driver_id: driverId,
+                  lat: pos.latitude,
+                  lng: pos.longitude,
+                }),
+              });
+            } catch (error) {
+              console.log("❌ Erreur envoi position:", error);
+            }
+          }
+        }
+      );
+    };
+
+    startWatching();
+    return () => {
+      if (watchPositionRef.current) {
+        watchPositionRef.current.remove();
+      }
+    };
+  }, [navigationActive, driverId, endPoint]);
 
   // Démarrage de la navigation
   const startNavigation = () => {
@@ -406,35 +406,34 @@ useEffect(() => {
   };
 
   // Terminer le trajet
-const completeTrip = async () => {
-  try {
-    const token = await SecureStore.getItemAsync("token");
-    
-    // Appeler l'API pour marquer le trajet comme terminé
-    const response = await fetch(`${API_URL}/api/trips/complete/${trip?.id}`, {
-      method: "PUT",  // Utiliser PUT pour la mise à jour
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-    });
+  const completeTrip = async () => {
+    try {
+      const token = await SecureStore.getItemAsync("token");
+      
+      const response = await fetch(`${API_URL}/api/trips/complete/${trip?.id}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+      });
 
-    const result = await response.json();
-    
-    if (response.ok) {
-      Alert.alert(
-        "Course terminée",
-        "Le trajet a été marqué comme terminé et a été retiré de votre liste active.",
-        [{ text: "OK", onPress: () => router.back() }]
-      );
-    } else {
-      Alert.alert("Erreur", result.message || "Impossible de terminer la course");
+      const result = await response.json();
+      
+      if (response.ok) {
+        Alert.alert(
+          "Course terminée",
+          "Le trajet a été marqué comme terminé.",
+          [{ text: "OK", onPress: () => router.back() }]
+        );
+      } else {
+        Alert.alert("Erreur", result.message || "Impossible de terminer la course");
+      }
+    } catch (error) {
+      console.log("❌ Erreur fin course:", error);
+      Alert.alert("Erreur", "Impossible de terminer la course");
     }
-  } catch (error) {
-    console.log("❌ Erreur fin course:", error);
-    Alert.alert("Erreur", "Impossible de terminer la course");
-  }
-};
+  };
 
   // Calcul de distance (Haversine)
   const calculateDistance = (point1: Coordinates, point2: Coordinates): number => {
@@ -567,7 +566,7 @@ const completeTrip = async () => {
       {/* Bouton Démarrer / Terminer la navigation */}
       {!navigationActive && !tripCompleted && routeCoords.length > 0 && (
         <TouchableOpacity style={styles.startButton} onPress={startNavigation}>
-          <Text style={styles.startButtonText}>▶ Démarrer la navigation</Text>
+          <Text style={styles.startButtonText}>▶️ Démarrer la navigation</Text>
         </TouchableOpacity>
       )}
 
@@ -579,7 +578,7 @@ const completeTrip = async () => {
 
       {navigationActive && !tripCompleted && (
         <TouchableOpacity style={styles.stopButton} onPress={completeTrip}>
-          <Text style={styles.stopButtonText}>⏹ Terminer la course</Text>
+          <Text style={styles.stopButtonText}>⏹️ Terminer la course</Text>
         </TouchableOpacity>
       )}
     </View>

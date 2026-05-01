@@ -677,10 +677,7 @@ app.get("/api/trips/reservations", authenticateDriver, (req, res) => {
   });
 });
 
-// =======================================================
 // ============= ROUTES POUR LES OFFRES DE TRAJET ========
-// =======================================================
-
 // ── Chauffeur fait une offre pour une demande ──
 app.post("/api/driver/make-offer", authenticateDriver, (req, res) => {
   const { demande_id, prix_propose, message, expires_in_hours = 24 } = req.body;
@@ -1095,8 +1092,6 @@ app.post("/api/driver/update_location", authenticateDriver, (req, res) => {
   );
 });
 
-// Dans server.js, vérifiez que cette route est correcte
-// ── Accepter / Refuser une réservation (version corrigée) ──
 // ── Accepter / Refuser une réservation ──
 app.post("/api/trips/reservation_action", authenticateDriver, (req, res) => {
   const { reservation_id, status } = req.body;
@@ -1170,9 +1165,7 @@ app.post("/api/trips/demande_action", authenticateDriver, (req, res) => {
   }
 });
 
-// =======================================================
 // ============= ROUTES POUR LA NEGOCIATION ==============
-// =======================================================
 
 // ── Chauffeur propose un prix pour une demande (offre initiale ou contre-offre) ──
 app.post("/api/driver/make-offer", authenticateDriver, (req, res) => {
@@ -1632,6 +1625,49 @@ app.get("/api/driver/check-expired-trips", authenticateDriver, (req, res) => {
       res.json({ success: true, expired_count: 0 });
     }
   });
+});
+
+// stocke les positions chauffeurs
+app.post("/traffic/update", async (req, res) => {
+  const { lat, lng, speed } = req.body;
+
+  await db.query(`
+    INSERT INTO traffic_points (lat, lng, speed, created_at)
+    VALUES (?, ?, ?, NOW())
+  `, [lat, lng, speed]);
+
+  res.json({ ok: true });
+});
+
+app.get("/traffic/predict", async (req, res) => {
+  const { hour } = req.query;
+
+  const data = await db.query(`
+    SELECT 
+      ROUND(lat,2) lat,
+      ROUND(lng,2) lng,
+      AVG(speed) avg_speed
+    FROM traffic_points
+    WHERE HOUR(created_at) = ?
+    GROUP BY lat, lng
+  `, [hour]);
+
+  res.json(data);
+});
+
+app.get("/traffic/heatmap", async (req, res) => {
+  const data = await db.query(`
+    SELECT 
+      ROUND(lat, 2) as lat_zone,
+      ROUND(lng, 2) as lng_zone,
+      AVG(speed) as avg_speed,
+      COUNT(*) as density
+    FROM traffic_points
+    WHERE created_at > NOW() - INTERVAL 1 HOUR
+    GROUP BY lat_zone, lng_zone
+  `);
+
+  res.json(data);
 });
 
 // ================= TRANSPORT URBAIN =================
