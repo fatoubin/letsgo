@@ -4,7 +4,9 @@ import { useEffect, useState, useRef } from "react";
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from "react-native-maps";
 import { Ionicons } from "@expo/vector-icons";
 import * as Location from "expo-location";
-import { API_URL } from "../../lib/api";
+
+// 🔑 INSÉREZ VOTRE CLÉ API OPENROUTESERVICE ICI
+const ORS_API_KEY = "eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImY2ZGRhNmM1MGNjOTQxOGNiZjcxMDVkNGQyNDExZjljIiwiaCI6Im11cm11cjY0In0=";
 
 export default function BusMapScreen() {
   const params = useLocalSearchParams();
@@ -33,58 +35,136 @@ export default function BusMapScreen() {
   const [routeCoords, setRouteCoords] = useState([]);
   const [following, setFollowing] = useState(false);
   const [userLocation, setUserLocation] = useState(null);
-  const [duration, setDuration] = useState(null);
-  const [distance, setDistance] = useState(null);
+  const [duration, setDuration] = useState(null);      // en minutes
+  const [distance, setDistance] = useState(null);      // en km
   const [loading, setLoading] = useState(true);
   const [progressIndex, setProgressIndex] = useState(0);
+  const [estimatedArrival, setEstimatedArrival] = useState(null);
   const intervalRef = useRef(null);
 
-  // Récupérer l'itinéraire réel depuis l'API
-  useEffect(() => {
-    const fetchDirections = async () => {
-      try {
-        const response = await fetch(
-          `${API_URL}/api/transport/directions?lat_depart=${start.latitude}&lon_depart=${start.longitude}&lat_arrivee=${end.latitude}&lon_arrivee=${end.longitude}`
-        );
-        const data = await response.json();
+  // 📍 1. Fonction pour appeler l'API OpenRouteService
+  const fetchOpenRouteServiceRoute = async () => {
+    try {
+      // L'API ORS attend les coordonnées au format "lon,lat" (longitude, latitude)
+      const startCoord = `${start.longitude},${start.latitude}`;
+      const endCoord = `${end.longitude},${end.latitude}`;
+      
+      // Choix du profil : 'driving-car' pour voiture, 'foot-walking' pour piéton, 'cycling-regular' pour vélo
+      // Pour un bus, 'driving-car' est le plus adapté car il suit les routes
+      const profile = 'driving-car';
+      
+      const url = `https://api.openrouteservice.org/v2/directions/${profile}?api_key=${ORS_API_KEY}&start=${startCoord}&end=${endCoord}`;
+      
+      const response = await fetch(url);
+      const data = await response.json();
+      
+      if (data.features && data.features.length > 0) {
+        const route = data.features[0];
+        const geometry = route.geometry.coordinates; // Tableau de [lon, lat]
+        const segments = route.properties.segments[0];
         
-        if (data.success && data.points && data.points.length > 0) {
-          setRouteCoords(data.points);
-          setDuration(data.duration);
-          setDistance(data.distance);
-        } else {
-          // Fallback: points intermédiaires simples
-          const points = [];
-          const steps = 30;
-          for (let i = 0; i <= steps; i++) {
-            const t = i / steps;
-            const lat = start.latitude + (end.latitude - start.latitude) * t;
-            const lng = start.longitude + (end.longitude - start.longitude) * t;
-            points.push({ latitude: lat, longitude: lng });
-          }
-          setRouteCoords(points);
-          setDuration("30 min");
-          setDistance("15 km");
-        }
-      } catch (error) {
-        console.error("Erreur directions:", error);
-        const points = [];
-        const steps = 30;
-        for (let i = 0; i <= steps; i++) {
-          const t = i / steps;
-          const lat = start.latitude + (end.latitude - start.latitude) * t;
-          const lng = start.longitude + (end.longitude - start.longitude) * t;
-          points.push({ latitude: lat, longitude: lng });
-        }
-        setRouteCoords(points);
-        setDuration("30 min");
-        setDistance("15 km");
-      } finally {
-        setLoading(false);
+        // Convertir les coordonnées ORS (lon, lat) au format MapView (lat, lon)
+        const points = geometry.map(coord => ({
+          latitude: coord[1],
+          longitude: coord[0]
+        }));
+        
+        // Durée en secondes -> minutes
+        const durationSeconds = segments.duration;
+        const durationMinutes = Math.ceil(durationSeconds / 60);
+        
+        // Distance en mètres -> kilomètres
+        const distanceMeters = segments.distance;
+        const distanceKm = (distanceMeters / 1000).toFixed(1);
+        
+        setDuration(durationMinutes);
+        setDistance(`${distanceKm} km`);
+        
+        return { points, duration: durationMinutes, distance: parseFloat(distanceKm) };
+      } else {
+        throw new Error("Aucun itinéraire trouvé par ORS");
       }
+    } catch (error) {
+      console.error("Erreur ORS:", error);
+      // Fallback si ORS échoue
+      return null;
+    }
+  };
+
+  // 📍 2. Calcul manuel de secours (si ORS échoue)
+  const calculateDistance = (lat1, lon1, lat2, lon2) => {
+    const R = 6371;
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+              Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+              Math.sin(dLon/2) * Math.sin(dLon/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    return R * c;
+  };
+
+  const generateFallbackRoute = () => {
+    const points = [];
+    const steps = 40;
+    const directDistance = calculateDistance(start.latitude, start.longitude, end.latitude, end.longitude);
+    const estimatedMinutes = Math.ceil((directDistance / 25) * 60);
+    
+    for (let i = 0; i <= steps; i++) {
+      const t = i / steps;
+      const curve = Math.sin(t * Math.PI) * 0.002;
+      let lat = start.latitude + (end.latitude - start.latitude) * t;
+      let lng = start.longitude + (end.longitude - start.longitude) * t;
+      const dx = end.longitude - start.longitude;
+      const dy = end.latitude - start.latitude;
+      const perpX = -dy;
+      const perpY = dx;
+      const norm = Math.sqrt(perpX * perpX + perpY * perpY);
+      if (norm > 0) {
+        lat += (perpY / norm) * curve;
+        lng += (perpX / norm) * curve;
+      }
+      points.push({ latitude: lat, longitude: lng });
+    }
+    
+    setDuration(estimatedMinutes);
+    setDistance(`${directDistance.toFixed(1)} km`);
+    return { points, duration: estimatedMinutes, distance: directDistance };
+  };
+
+  const calculateArrivalTime = (durationMinutes) => {
+    const now = new Date();
+    const arrival = new Date(now.getTime() + durationMinutes * 60000);
+    return arrival.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+  };
+
+  useEffect(() => {
+    const initRoute = async () => {
+      setLoading(true);
+      
+      // Tentative avec OpenRouteService
+      let routeData = await fetchOpenRouteServiceRoute();
+      let points;
+      
+      if (routeData && routeData.points.length > 0) {
+        points = routeData.points;
+      } else {
+        // Fallback si ORS échoue
+        console.log("ORS a échoué, utilisation du fallback");
+        const fallback = generateFallbackRoute();
+        points = fallback.points;
+        routeData = fallback;
+      }
+      
+      setRouteCoords(points);
+      if (routeData && routeData.duration) {
+        const arrivalTime = calculateArrivalTime(routeData.duration);
+        setEstimatedArrival(arrivalTime);
+      }
+      
+      setLoading(false);
     };
     
-    fetchDirections();
+    initRoute();
   }, []);
 
   // Récupérer la position de l'utilisateur
@@ -113,11 +193,14 @@ export default function BusMapScreen() {
     setFollowing(true);
     let currentIndex = progressIndex;
 
+    const totalSegments = routeCoords.length - 1;
+    const timePerSegment = (duration * 60 * 1000) / totalSegments;
+    
     intervalRef.current = setInterval(() => {
       if (currentIndex >= routeCoords.length - 1) {
         clearInterval(intervalRef.current);
         setFollowing(false);
-        Alert.alert("Arrivée", `Le bus est arrivé à ${arriveeNom}`);
+        Alert.alert("Arrivée", `Le bus est arrivé à ${arriveeNom} vers ${estimatedArrival}`);
         return;
       }
       currentIndex++;
@@ -125,6 +208,11 @@ export default function BusMapScreen() {
       const newPosition = routeCoords[currentIndex];
       if (newPosition) {
         setBusPosition(newPosition);
+        
+        const remainingSegments = routeCoords.length - 1 - currentIndex;
+        const remainingTimeMinutes = Math.ceil((remainingSegments * timePerSegment) / 60000);
+        const newArrivalTime = new Date(Date.now() + remainingTimeMinutes * 60000);
+        setEstimatedArrival(newArrivalTime.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }));
         
         if (mapRef.current) {
           mapRef.current.animateToRegion({
@@ -135,7 +223,7 @@ export default function BusMapScreen() {
           });
         }
       }
-    }, 2000);
+    }, Math.min(timePerSegment, 3000));
   };
 
   const stopFollowing = () => {
@@ -147,6 +235,9 @@ export default function BusMapScreen() {
     stopFollowing();
     setProgressIndex(0);
     setBusPosition(routeCoords[0] || start);
+    if (duration) {
+      setEstimatedArrival(calculateArrivalTime(duration));
+    }
   };
 
   const centerOnUser = () => {
@@ -175,7 +266,7 @@ export default function BusMapScreen() {
     return (
       <View style={styles.center}>
         <ActivityIndicator size="large" color="#2563EB" />
-        <Text style={styles.loading}>Chargement de l'itinéraire...</Text>
+        <Text style={styles.loading}>Calcul de l'itinéraire avec OpenRouteService...</Text>
       </View>
     );
   }
@@ -213,12 +304,14 @@ export default function BusMapScreen() {
         <Marker coordinate={start} title="Départ" pinColor="green">
           <View style={styles.markerStart}>
             <Ionicons name="flag" size={20} color="#10B981" />
+            <Text style={styles.markerLabel}>{departNom}</Text>
           </View>
         </Marker>
         
         <Marker coordinate={end} title="Arrivée" pinColor="red">
           <View style={styles.markerEnd}>
             <Ionicons name="flag" size={20} color="#EF4444" />
+            <Text style={styles.markerLabel}>{arriveeNom}</Text>
           </View>
         </Marker>
         
@@ -241,7 +334,10 @@ export default function BusMapScreen() {
             🚏 {departNom} → {arriveeNom}
           </Text>
           <Text style={styles.infoText}>
-            📍 Distance: {distance} | ⏱️ Durée: {duration}
+            📍 Distance: {distance} | ⏱️ Durée estimée: {duration} min
+          </Text>
+          <Text style={styles.infoText}>
+            🕐 Arrivée prévue vers {estimatedArrival}
           </Text>
           <Text style={styles.infoText}>
             {following ? "🚌 Suivi en cours..." : "⏸ Suivi arrêté"}
@@ -256,7 +352,7 @@ export default function BusMapScreen() {
           {!following ? (
             <TouchableOpacity style={styles.followBtn} onPress={startFollowing}>
               <Ionicons name="play" size={20} color="#fff" />
-              <Text style={styles.followText}>Suivre</Text>
+              <Text style={styles.followText}>Suivre le bus</Text>
             </TouchableOpacity>
           ) : (
             <TouchableOpacity style={styles.stopBtn} onPress={stopFollowing}>
@@ -295,6 +391,7 @@ const styles = StyleSheet.create({
     padding: 6,
     borderWidth: 2,
     borderColor: "#fff",
+    alignItems: "center",
   },
   markerEnd: {
     backgroundColor: "#EF4444",
@@ -302,6 +399,13 @@ const styles = StyleSheet.create({
     padding: 6,
     borderWidth: 2,
     borderColor: "#fff",
+    alignItems: "center",
+  },
+  markerLabel: {
+    color: "#fff",
+    fontSize: 10,
+    fontWeight: "bold",
+    marginTop: 2,
   },
   markerBus: {
     backgroundColor: "#2563EB",
