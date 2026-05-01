@@ -514,41 +514,112 @@ app.get("/api/driver/profile", authenticateDriver, (req, res) => {
   );
 });
 
-// ── Trajets du chauffeur ──
+// ── Trajets du chauffeur (récupère tous les trajets du chauffeur)
 app.get("/api/driver/my_trips", authenticateDriver, (req, res) => {
   const { driver_id } = req.query;
-  if (!driver_id) return res.status(400).json({ message: "driver_id requis" });
+  
+  let driverId = driver_id;
+  if (!driverId && req.driver && req.driver.driverId) {
+    driverId = req.driver.driverId;
+  }
+  
+  if (!driverId) {
+    return res.status(400).json({ message: "driver_id requis" });
+  }
 
-  db.query(
-    "SELECT * FROM trajets WHERE user_id = (SELECT user_id FROM drivers WHERE id = ?) ORDER BY heure DESC",
-    [driver_id],
-    (err, results) => {
-      if (err) return res.status(500).json({ message: "Erreur serveur" });
-      res.json(results);
+  // Récupérer tous les trajets du chauffeur, triés par date décroissante
+  const sql = `
+    SELECT t.* 
+    FROM trajets t
+    WHERE t.user_id = (SELECT user_id FROM drivers WHERE id = ?)
+    ORDER BY t.heure DESC
+  `;
+  
+  db.query(sql, [driverId], (err, results) => {
+    if (err) {
+      console.error("❌ Erreur SQL:", err);
+      return res.status(500).json({ message: "Erreur serveur", error: err.message });
     }
-  );
+    
+    console.log(`✅ [my_trips] ${results.length} trajets trouvés`);
+    res.json(results);
+  });
 });
 
-// ── Créer un trajet (chauffeur) ──
+// ── Créer un trajet (chauffeur) - Version corrigée
 app.post("/api/trips/create", authenticateDriver, (req, res) => {
   const { driverId, departure, destination, date, time, seats, price } = req.body;
-  if (!driverId || !departure || !destination || !date || !time || !seats)
+  
+  if (!driverId || !departure || !destination || !date || !time || !seats) {
     return res.status(400).json({ message: "Tous les champs sont requis" });
+  }
 
+  const heure = `${date} ${time}`;
+
+  console.log("📝 Création trajet - driverId:", driverId);
+  console.log("📝 Départ:", departure, "Destination:", destination);
+  console.log("📝 Heure:", heure);
+  console.log("📝 Places:", seats, "Prix:", price);
+
+  // Insérer avec status 'active'
   db.query(
-    "INSERT INTO trajets (user_id, depart, destination, heure, places, prix) VALUES ((SELECT user_id FROM drivers WHERE id = ?), ?, ?, ?, ?, ?)",
-    [driverId, departure, destination, `${date} ${time}`, seats, price || null],
+    `INSERT INTO trajets (user_id, depart, destination, heure, places, prix, status) 
+     VALUES ((SELECT user_id FROM drivers WHERE id = ?), ?, ?, ?, ?, ?, 'active')`,
+    [driverId, departure, destination, heure, seats, price || null],
     (err, result) => {
-      if (err) return res.status(500).json({ message: "Erreur création trajet" });
-      res.status(201).json({ message: "Trajet créé", tripId: result.insertId });
+      if (err) {
+        console.error("❌ Erreur création trajet:", err);
+        return res.status(500).json({ message: "Erreur création trajet", error: err.message });
+      }
+      
+      console.log(`✅ Trajet créé avec ID: ${result.insertId}`);
+      res.status(201).json({ 
+        message: "Trajet créé avec succès", 
+        tripId: result.insertId,
+        status: "active"
+      });
     }
   );
 });
 
-// ── Demandes passagers visibles par le chauffeur ──
-app.get("/api/trips/driver_requests", authenticateDriver, (req, res) => {
+// ── Marquer un trajet comme terminé (soft delete) ──
+app.put("/api/trips/complete/:id", authenticateDriver, (req, res) => {
+  const tripId = req.params.id;
+  
+  console.log(`📝 Marquage du trajet ${tripId} comme terminé`);
+  
+  // Mettre à jour le statut du trajet sans le supprimer
   db.query(
-    `SELECT 
+    "UPDATE trajets SET status = 'completed', completed_at = NOW() WHERE id = ?",
+    [tripId],
+    (err, result) => {
+      if (err) {
+        console.error("❌ Erreur mise à jour trajet:", err);
+        return res.status(500).json({ message: "Erreur serveur" });
+      }
+      
+      if (result.affectedRows === 0) {
+        return res.status(404).json({ message: "Trajet non trouvé" });
+      }
+      
+      console.log(`✅ Trajet ${tripId} marqué comme terminé`);
+      res.json({ 
+        success: true, 
+        message: "Trajet terminé avec succès",
+        tripId: tripId
+      });
+    }
+  );
+});
+
+// ── Demandes passagers UNIQUEMENT EN ATTENTE ──
+app.get("/api/trips/driver_requests", authenticateDriver, (req, res) => {
+  const chauffeur_id = req.driver.driverId;
+  
+  // Récupérer uniquement les demandes en attente (pending)
+  // Exclure celles que ce chauffeur a déjà refusées
+  const sql = `
+    SELECT 
       dm.id,
       dm.depart,
       dm.destination,
@@ -557,14 +628,23 @@ app.get("/api/trips/driver_requests", authenticateDriver, (req, res) => {
       u.nom,
       u.prenom,
       u.telephone
-     FROM demandes dm
-     JOIN users u ON dm.user_id = u.id
-     ORDER BY dm.created_at DESC`,
-    (err, results) => {
-      if (err) return res.status(500).json({ message: "Erreur serveur" });
-      res.json(results);
+    FROM demandes dm
+    JOIN users u ON dm.user_id = u.id
+    WHERE dm.status = 'pending'
+    AND NOT EXISTS (
+      SELECT 1 FROM demandes_refus dr 
+      WHERE dr.demande_id = dm.id AND dr.chauffeur_id = ?
+    )
+    ORDER BY dm.created_at DESC
+  `;
+  
+  db.query(sql, [chauffeur_id], (err, results) => {
+    if (err) {
+      console.error("❌ Erreur récupération demandes:", err);
+      return res.status(500).json({ message: "Erreur serveur" });
     }
-  );
+    res.json(results);
+  });
 });
 
 // ── Récupérer les réservations d'un trajet spécifique ──
@@ -597,13 +677,268 @@ app.get("/api/trips/reservations", authenticateDriver, (req, res) => {
   });
 });
 
-// ── Stats chauffeur ──
-app.get("/api/driver/stats", authenticateDriver, (req, res) => {
+// =======================================================
+// ============= ROUTES POUR LES OFFRES DE TRAJET ========
+// =======================================================
+
+// ── Chauffeur fait une offre pour une demande ──
+app.post("/api/driver/make-offer", authenticateDriver, (req, res) => {
+  const { demande_id, prix_propose, message, expires_in_hours = 24 } = req.body;
+  const chauffeur_id = req.driver.driverId;
+  
+  if (!demande_id || !prix_propose) {
+    return res.status(400).json({ message: "demande_id et prix_propose requis" });
+  }
+  
+  // Vérifier que la demande existe et est encore en attente
+  db.query(
+    "SELECT * FROM demandes WHERE id = ? AND status = 'pending'",
+    [demande_id],
+    (err, demandes) => {
+      if (err) return res.status(500).json({ message: "Erreur serveur" });
+      if (demandes.length === 0) {
+        return res.status(404).json({ message: "Demande introuvable ou déjà traitée" });
+      }
+      
+      // Vérifier si le chauffeur a déjà fait une offre pour cette demande
+      db.query(
+        "SELECT * FROM trajet_offres WHERE demande_id = ? AND chauffeur_id = ? AND statut = 'en_attente'",
+        [demande_id, chauffeur_id],
+        (err2, existing) => {
+          if (err2) return res.status(500).json({ message: "Erreur serveur" });
+          if (existing.length > 0) {
+            return res.status(400).json({ message: "Vous avez déjà une offre en attente pour cette demande" });
+          }
+          
+          const expires_at = new Date(Date.now() + expires_in_hours * 60 * 60 * 1000);
+          
+          db.query(
+            `INSERT INTO trajet_offres (demande_id, chauffeur_id, prix_propose, message, expires_at) 
+             VALUES (?, ?, ?, ?, ?)`,
+            [demande_id, chauffeur_id, prix_propose, message || null, expires_at],
+            (err3, result) => {
+              if (err3) return res.status(500).json({ message: "Erreur création offre" });
+              
+              // Récupérer les infos du client pour notification
+              db.query(
+                `SELECT u.id, u.nom, u.prenom, u.telephone, d.depart, d.destination, d.places
+                 FROM demandes d
+                 JOIN users u ON d.user_id = u.id
+                 WHERE d.id = ?`,
+                [demande_id],
+                (err4, clientInfo) => {
+                  // Ici vous pouvez envoyer une notification push au client
+                  console.log(`📢 Nouvelle offre pour ${clientInfo[0]?.prenom} ${clientInfo[0]?.nom}`);
+                }
+              );
+              
+              res.status(201).json({ 
+                success: true, 
+                message: "Offre envoyée au client",
+                offreId: result.insertId
+              });
+            }
+          );
+        }
+      );
+    }
+  );
+});
+
+// ── Client voit les offres pour ses demandes ──
+app.get("/api/client/mes-offres", authenticate, (req, res) => {
+  db.query(
+    `SELECT 
+      o.id as offre_id,
+      o.prix_propose,
+      o.statut,
+      o.message,
+      o.created_at,
+      o.expires_at,
+      d.id as demande_id,
+      d.depart,
+      d.destination,
+      d.date_depart,
+      d.heure_depart,
+      d.places,
+      dr.id as chauffeur_id,
+      u.nom as chauffeur_nom,
+      u.prenom as chauffeur_prenom,
+      u.telephone as chauffeur_telephone,
+      dr.vehicle_type,
+      dr.vehicle_plate,
+      dr.seats
+    FROM trajet_offres o
+    JOIN demandes d ON o.demande_id = d.id
+    JOIN drivers dr ON o.chauffeur_id = dr.id
+    JOIN users u ON dr.user_id = u.id
+    WHERE d.user_id = ?
+    ORDER BY o.created_at DESC`,
+    [req.user.id],
+    (err, results) => {
+      if (err) return res.status(500).json({ message: "Erreur serveur" });
+      res.json(results);
+    }
+  );
+});
+
+// ── Client accepte ou refuse une offre ──
+app.post("/api/client/repondre-offre", authenticate, (req, res) => {
+  const { offre_id, action } = req.body; // action: 'accept' ou 'reject'
+  
+  if (!offre_id || !action) {
+    return res.status(400).json({ message: "offre_id et action requis" });
+  }
+  
+  if (!["accept", "reject"].includes(action)) {
+    return res.status(400).json({ message: "Action invalide" });
+  }
+  
+  // Récupérer l'offre
+  db.query(
+    `SELECT o.*, d.user_id as client_id, d.depart, d.destination, d.date_depart, d.heure_depart, d.places
+     FROM trajet_offres o
+     JOIN demandes d ON o.demande_id = d.id
+     WHERE o.id = ? AND o.statut = 'en_attente'`,
+    [offre_id],
+    (err, offres) => {
+      if (err) return res.status(500).json({ message: "Erreur serveur" });
+      if (offres.length === 0) {
+        return res.status(404).json({ message: "Offre introuvable ou déjà traitée" });
+      }
+      
+      const offre = offres[0];
+      
+      // Vérifier que le client est bien propriétaire de la demande
+      if (offre.client_id !== req.user.id) {
+        return res.status(403).json({ message: "Non autorisé" });
+      }
+      
+      if (action === "accept") {
+        // Accepter l'offre : créer un trajet et une réservation
+        const heure = `${offre.date_depart} ${offre.heure_depart}`;
+        
+        // 1. Créer le trajet
+        db.query(
+          `INSERT INTO trajets (user_id, depart, destination, heure, places, prix, status) 
+           VALUES ((SELECT user_id FROM drivers WHERE id = ?), ?, ?, ?, ?, ?, 'active')`,
+          [offre.chauffeur_id, offre.depart, offre.destination, heure, offre.places, offre.prix_propose],
+          (err2, trajetResult) => {
+            if (err2) {
+              console.error("❌ Erreur création trajet:", err2);
+              return res.status(500).json({ message: "Erreur création trajet" });
+            }
+            
+            const tripId = trajetResult.insertId;
+            
+            // 2. Créer la réservation
+            db.query(
+              `INSERT INTO reservations (trip_id, user_id, places, prix, offre_id, status) 
+               VALUES (?, ?, ?, ?, ?, 'confirmed')`,
+              [tripId, req.user.id, offre.places, offre.prix_propose, offre_id],
+              (err3, reservationResult) => {
+                if (err3) {
+                  console.error("❌ Erreur création réservation:", err3);
+                  return res.status(500).json({ message: "Erreur création réservation" });
+                }
+                
+                // 3. Mettre à jour le statut de l'offre
+                db.query(
+                  "UPDATE trajet_offres SET statut = 'acceptee' WHERE id = ?",
+                  [offre_id],
+                  (err4) => {
+                    if (err4) console.error("Erreur mise à jour offre:", err4);
+                  }
+                );
+                
+                // 4. Mettre à jour le statut de la demande
+                db.query(
+                  "UPDATE demandes SET status = 'accepted', trip_id = ? WHERE id = ?",
+                  [tripId, offre.demande_id],
+                  (err5) => {
+                    if (err5) console.error("Erreur mise à jour demande:", err5);
+                  }
+                );
+                
+                res.json({ 
+                  success: true, 
+                  message: "Offre acceptée, trajet créé",
+                  tripId: tripId,
+                  reservationId: reservationResult.insertId
+                });
+              }
+            );
+          }
+        );
+      } else {
+        // Refuser l'offre : juste mettre à jour le statut
+        db.query(
+          "UPDATE trajet_offres SET statut = 'refusee' WHERE id = ?",
+          [offre_id],
+          (err2) => {
+            if (err2) return res.status(500).json({ message: "Erreur refus offre" });
+            res.json({ success: true, message: "Offre refusée" });
+          }
+        );
+      }
+    }
+  );
+});
+
+// ── Chauffeur voit ses offres ──
+app.get("/api/driver/mes-offres", authenticateDriver, (req, res) => {
+  const chauffeur_id = req.driver.driverId;
+  
+  db.query(
+    `SELECT 
+      o.*,
+      d.depart,
+      d.destination,
+      d.date_depart,
+      d.heure_depart,
+      d.places,
+      u.nom as client_nom,
+      u.prenom as client_prenom,
+      u.telephone as client_telephone
+    FROM trajet_offres o
+    JOIN demandes d ON o.demande_id = d.id
+    JOIN users u ON d.user_id = u.id
+    WHERE o.chauffeur_id = ?
+    ORDER BY o.created_at DESC`,
+    [chauffeur_id],
+    (err, results) => {
+      if (err) return res.status(500).json({ message: "Erreur serveur" });
+      res.json(results);
+    }
+  );
+});
+
+// routes/driver.js
+app.get("/api/driver/check-expired-trips", authenticateDriver, (req, res) => {
   const { driver_id } = req.query;
   if (!driver_id) return res.status(400).json({ message: "driver_id requis" });
 
   db.query(
-    "SELECT COUNT(*) AS total_trips FROM trajets WHERE user_id = (SELECT user_id FROM drivers WHERE id = ?)",
+    `UPDATE trajets SET status = 'expired' 
+     WHERE user_id = (SELECT user_id FROM drivers WHERE id = ?) 
+     AND heure < NOW() 
+     AND status = 'active'`,
+    [driver_id],
+    (err, result) => {
+      if (err) return res.status(500).json({ message: "Erreur serveur" });
+      res.json({ success: true, expired_count: result.affectedRows });
+    }
+  );
+});
+
+// ── Stats chauffeur (compte les trajets terminés) ──
+app.get("/api/driver/stats", authenticateDriver, (req, res) => {
+  const { driver_id } = req.query;
+  if (!driver_id) return res.status(400).json({ message: "driver_id requis" });
+
+  // Compter le nombre total de trajets terminés
+  db.query(
+    "SELECT COUNT(*) AS total_trips FROM trajets WHERE user_id = (SELECT user_id FROM drivers WHERE id = ?) AND status = 'completed'",
     [driver_id],
     (err, results) => {
       if (err) return res.status(500).json({ message: "Erreur serveur" });
@@ -612,11 +947,12 @@ app.get("/api/driver/stats", authenticateDriver, (req, res) => {
   );
 });
 
-// ── Historique chauffeur ──
+// ── Historique complet (inclut les trajets terminés) ──
 app.get("/api/driver/history", authenticateDriver, (req, res) => {
   const { driver_id } = req.query;
-  if (!driver_id) return res.status(400). json({ message: "driver_id requis" });
+  if (!driver_id) return res.status(400).json({ message: "driver_id requis" });
 
+  // Récupérer TOUS les trajets (y compris terminés) pour l'historique
   db.query(
     "SELECT * FROM trajets WHERE user_id = (SELECT user_id FROM drivers WHERE id = ?) ORDER BY heure DESC",
     [driver_id],
@@ -625,6 +961,113 @@ app.get("/api/driver/history", authenticateDriver, (req, res) => {
       res.json(results);
     }
   );
+});
+
+// ── Revenus du chauffeur ──
+app.get("/api/driver/revenue", authenticateDriver, (req, res) => {
+  const { driver_id, period } = req.query;
+  
+  let dateCondition = "";
+  if (period === "week") {
+    dateCondition = "AND completed_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)";
+  } else if (period === "month") {
+    dateCondition = "AND completed_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)";
+  }
+  
+  db.query(
+    `SELECT SUM(prix) as total_revenue FROM trajets 
+     WHERE user_id = (SELECT user_id FROM drivers WHERE id = ?) 
+     AND status = 'completed' ${dateCondition}`,
+    [driver_id],
+    (err, results) => {
+      if (err) return res.status(500).json({ message: "Erreur serveur" });
+      res.json({ total_revenue: results[0].total_revenue || 0 });
+    }
+  );
+});
+
+// ── Récupérer tous les revenus pour le graphique ──
+app.get("/api/driver/revenue/all", authenticateDriver, (req, res) => {
+  const { driver_id } = req.query;
+  
+  if (!driver_id) {
+    return res.status(400).json({ message: "driver_id requis" });
+  }
+
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const currentMonth = now.getMonth();
+  
+  // Revenus par jour de la semaine (7 derniers jours)
+  const weekQuery = `
+    SELECT DAYOFWEEK(completed_at) as day, SUM(prix) as total
+    FROM trajets 
+    WHERE user_id = (SELECT user_id FROM drivers WHERE id = ?) 
+    AND status = 'completed'
+    AND completed_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+    GROUP BY DAYOFWEEK(completed_at)
+  `;
+  
+  // Revenus par mois
+  const monthQuery = `
+    SELECT MONTH(completed_at) as month, SUM(prix) as total
+    FROM trajets 
+    WHERE user_id = (SELECT user_id FROM drivers WHERE id = ?) 
+    AND status = 'completed'
+    AND YEAR(completed_at) = ?
+    GROUP BY MONTH(completed_at)
+  `;
+  
+  // Total général
+  const totalQuery = `
+    SELECT SUM(prix) as total
+    FROM trajets 
+    WHERE user_id = (SELECT user_id FROM drivers WHERE id = ?) 
+    AND status = 'completed'
+  `;
+  
+  Promise.all([
+    new Promise((resolve, reject) => {
+      db.query(weekQuery, [driver_id], (err, rows) => {
+        if (err) reject(err);
+        else {
+          const weekly = [0, 0, 0, 0, 0, 0, 0];
+          rows.forEach(row => {
+            // DAYOFWEEK: 1=dimanche, 2=lundi...
+            const idx = row.day === 1 ? 6 : row.day - 2;
+            if (idx >= 0 && idx < 7) weekly[idx] = row.total || 0;
+          });
+          resolve(weekly);
+        }
+      });
+    }),
+    new Promise((resolve, reject) => {
+      db.query(monthQuery, [driver_id, currentYear], (err, rows) => {
+        if (err) reject(err);
+        else {
+          const monthly = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+          rows.forEach(row => {
+            const idx = row.month - 1;
+            if (idx >= 0 && idx < 12) monthly[idx] = row.total || 0;
+          });
+          resolve(monthly);
+        }
+      });
+    }),
+    new Promise((resolve, reject) => {
+      db.query(totalQuery, [driver_id], (err, rows) => {
+        if (err) reject(err);
+        else resolve(rows[0]?.total || 0);
+      });
+    })
+  ])
+  .then(([weekly, monthly, total]) => {
+    res.json({ weekly, monthly, total });
+  })
+  .catch(err => {
+    console.error("❌ Erreur revenue:", err);
+    res.status(500).json({ message: "Erreur serveur" });
+  });
 });
 
 // ── Mise à jour position chauffeur ──
@@ -687,9 +1130,10 @@ app.post("/api/trips/reservation_action", authenticateDriver, (req, res) => {
   );
 });
 
-// ── Accepter / Refuser une DEMANDE (table demandes) ──
+// ── Refuser une demande (le chauffeur refuse, la demande reste visible pour les autres) ──
 app.post("/api/trips/demande_action", authenticateDriver, (req, res) => {
   const { demande_id, status } = req.body;
+  const chauffeur_id = req.driver.driverId;
 
   if (!demande_id || !status)
     return res.status(400).json({ message: "Champs manquants" });
@@ -697,14 +1141,405 @@ app.post("/api/trips/demande_action", authenticateDriver, (req, res) => {
   if (!["accepted", "rejected"].includes(status))
     return res.status(400).json({ message: "Statut invalide" });
 
+  if (status === "accepted") {
+    // Si accepté, créer une offre ou traiter directement
+    // (logique existante)
+    db.query(
+      "UPDATE demandes SET status = 'accepted' WHERE id = ?",
+      [demande_id],
+      (err, result) => {
+        if (err) return res.status(500).json({ message: "Erreur serveur" });
+        res.json({ success: true, message: "Demande acceptée" });
+      }
+    );
+  } else {
+    // Si refusé, on enregistre le refus de ce chauffeur sans changer le statut de la demande
+    // pour que d'autres chauffeurs puissent encore la voir
+    db.query(
+      "INSERT INTO demandes_refus (demande_id, chauffeur_id, refused_at) VALUES (?, ?, NOW())",
+      [demande_id, chauffeur_id],
+      (err) => {
+        if (err) console.error("Erreur enregistrement refus:", err);
+      }
+    );
+    
+    res.json({ 
+      success: true, 
+      message: "Demande refusée, elle reste visible pour les autres chauffeurs" 
+    });
+  }
+});
+
+// =======================================================
+// ============= ROUTES POUR LA NEGOCIATION ==============
+// =======================================================
+
+// ── Chauffeur propose un prix pour une demande (offre initiale ou contre-offre) ──
+app.post("/api/driver/make-offer", authenticateDriver, (req, res) => {
+  const { demande_id, prix_propose, message, expires_in_hours = 24 } = req.body;
+  const chauffeur_id = req.driver.driverId;
+  
+  if (!demande_id || !prix_propose) {
+    return res.status(400).json({ message: "demande_id et prix_propose requis" });
+  }
+  
+  // Vérifier que la demande existe et est encore en attente
   db.query(
-    "UPDATE demandes SET status = ? WHERE id = ?",
-    [status, demande_id],
-    (err, result) => {
+    `SELECT d.*, u.nom, u.prenom, u.email, u.telephone 
+     FROM demandes d
+     JOIN users u ON d.user_id = u.id
+     WHERE d.id = ? AND d.status = 'pending'`,
+    [demande_id],
+    (err, demandes) => {
       if (err) return res.status(500).json({ message: "Erreur serveur" });
-      if (result.affectedRows === 0)
-        return res.status(404).json({ message: "Demande non trouvée" });
-      res.json({ success: true, message: `Demande ${status}` });
+      if (demandes.length === 0) {
+        return res.status(404).json({ message: "Demande introuvable ou déjà traitée" });
+      }
+      
+      const demande = demandes[0];
+      
+      // Vérifier si une offre existe déjà
+      db.query(
+        `SELECT * FROM trajet_offres 
+         WHERE demande_id = ? AND chauffeur_id = ? AND statut = 'en_attente'`,
+        [demande_id, chauffeur_id],
+        (err2, existingOffers) => {
+          if (err2) return res.status(500).json({ message: "Erreur serveur" });
+          
+          const expires_at = new Date(Date.now() + expires_in_hours * 60 * 60 * 1000);
+          
+          if (existingOffers.length > 0) {
+            // Mise à jour de l'offre existante (contre-offre)
+            const offre = existingOffers[0];
+            
+            // Enregistrer la négociation
+            db.query(
+              `INSERT INTO negociations (offre_id, type, prix_propose, message) 
+               VALUES (?, 'chauffeur', ?, ?)`,
+              [offre.id, prix_propose, message || null],
+              (err3) => {
+                if (err3) console.error("Erreur enregistrement négociation:", err3);
+              }
+            );
+            
+            // Mettre à jour l'offre
+            db.query(
+              `UPDATE trajet_offres 
+               SET prix_propose = ?, 
+                   derniere_offre_chauffeur = ?,
+                   message = ?,
+                   expires_at = ?,
+                   updated_at = NOW()
+               WHERE id = ?`,
+              [prix_propose, prix_propose, message || null, expires_at, offre.id],
+              (err4) => {
+                if (err4) return res.status(500).json({ message: "Erreur mise à jour offre" });
+                
+                res.json({ 
+                  success: true, 
+                  message: "Nouvelle offre envoyée au client",
+                  offreId: offre.id,
+                  isCounterOffer: true
+                });
+              }
+            );
+          } else {
+            // Nouvelle offre
+            db.query(
+              `INSERT INTO trajet_offres 
+               (demande_id, chauffeur_id, prix_propose, prix_initial, derniere_offre_chauffeur, message, expires_at) 
+               VALUES (?, ?, ?, ?, ?, ?, ?)`,
+              [demande_id, chauffeur_id, prix_propose, prix_propose, prix_propose, message || null, expires_at],
+              (err3, result) => {
+                if (err3) return res.status(500).json({ message: "Erreur création offre" });
+                
+                res.status(201).json({ 
+                  success: true, 
+                  message: "Offre envoyée au client",
+                  offreId: result.insertId,
+                  isCounterOffer: false
+                });
+              }
+            );
+          }
+        }
+      );
+    }
+  );
+});
+
+// ── Client propose un contre-prix (négociation) ──
+app.post("/api/client/counter-offer", authenticate, (req, res) => {
+  const { offre_id, prix_propose, message } = req.body;
+  
+  if (!offre_id || !prix_propose) {
+    return res.status(400).json({ message: "offre_id et prix_propose requis" });
+  }
+  
+  // Récupérer l'offre
+  db.query(
+    `SELECT o.*, d.user_id as client_id, d.depart, d.destination, d.date_depart, d.heure_depart, d.places,
+            u.nom as chauffeur_nom, u.prenom as chauffeur_prenom, dr.user_id as chauffeur_user_id
+     FROM trajet_offres o
+     JOIN demandes d ON o.demande_id = d.id
+     JOIN drivers dr ON o.chauffeur_id = dr.id
+     JOIN users u ON dr.user_id = u.id
+     WHERE o.id = ? AND o.statut = 'en_attente'`,
+    [offre_id],
+    (err, offres) => {
+      if (err) return res.status(500).json({ message: "Erreur serveur" });
+      if (offres.length === 0) {
+        return res.status(404).json({ message: "Offre introuvable ou déjà traitée" });
+      }
+      
+      const offre = offres[0];
+      
+      // Vérifier que le client est bien propriétaire de la demande
+      if (offre.client_id !== req.user.id) {
+        return res.status(403).json({ message: "Non autorisé" });
+      }
+      
+      // Enregistrer la négociation du client
+      db.query(
+        `INSERT INTO negociations (offre_id, type, prix_propose, message) 
+         VALUES (?, 'client', ?, ?)`,
+        [offre_id, prix_propose, message || null],
+        (err2) => {
+          if (err2) console.error("Erreur enregistrement négociation:", err2);
+        }
+      );
+      
+      // Mettre à jour l'offre avec le contre-prix du client
+      db.query(
+        `UPDATE trajet_offres 
+         SET derniere_offre_client = ?, 
+             prix_propose = ?,
+             message = CONCAT(?, ' (Contre-offre client)')
+         WHERE id = ?`,
+        [prix_propose, prix_propose, message || "Contre-offre", offre_id],
+        (err3) => {
+          if (err3) return res.status(500).json({ message: "Erreur mise à jour offre" });
+          
+          res.json({ 
+            success: true, 
+            message: "Contre-offre envoyée au chauffeur",
+            offreId: offre_id
+          });
+        }
+      );
+    }
+  );
+});
+
+// ── Client accepte une offre ──
+app.post("/api/client/accept-offer", authenticate, (req, res) => {
+  const { offre_id } = req.body;
+  
+  if (!offre_id) {
+    return res.status(400).json({ message: "offre_id requis" });
+  }
+  
+  // Récupérer l'offre
+  db.query(
+    `SELECT o.*, d.user_id as client_id, d.depart, d.destination, d.date_depart, d.heure_depart, d.places
+     FROM trajet_offres o
+     JOIN demandes d ON o.demande_id = d.id
+     WHERE o.id = ? AND o.statut = 'en_attente'`,
+    [offre_id],
+    (err, offres) => {
+      if (err) return res.status(500).json({ message: "Erreur serveur" });
+      if (offres.length === 0) {
+        return res.status(404).json({ message: "Offre introuvable ou déjà traitée" });
+      }
+      
+      const offre = offres[0];
+      
+      // Vérifier que le client est bien propriétaire
+      if (offre.client_id !== req.user.id) {
+        return res.status(403).json({ message: "Non autorisé" });
+      }
+      
+      // Créer le trajet
+      const heure = `${offre.date_depart} ${offre.heure_depart}`;
+      
+      db.query(
+        `INSERT INTO trajets (user_id, depart, destination, heure, places, prix, status) 
+         VALUES ((SELECT user_id FROM drivers WHERE id = ?), ?, ?, ?, ?, ?, 'active')`,
+        [offre.chauffeur_id, offre.depart, offre.destination, heure, offre.places, offre.prix_propose],
+        (err2, trajetResult) => {
+          if (err2) {
+            console.error("❌ Erreur création trajet:", err2);
+            return res.status(500).json({ message: "Erreur création trajet" });
+          }
+          
+          const tripId = trajetResult.insertId;
+          
+          // Créer la réservation
+          db.query(
+            `INSERT INTO reservations (trip_id, user_id, places, prix, offre_id, status) 
+             VALUES (?, ?, ?, ?, ?, 'confirmed')`,
+            [tripId, req.user.id, offre.places, offre.prix_propose, offre_id],
+            (err3, reservationResult) => {
+              if (err3) {
+                console.error("❌ Erreur création réservation:", err3);
+                return res.status(500).json({ message: "Erreur création réservation" });
+              }
+              
+              // Mettre à jour le statut de l'offre
+              db.query(
+                "UPDATE trajet_offres SET statut = 'acceptee' WHERE id = ?",
+                [offre_id],
+                (err4) => {
+                  if (err4) console.error("Erreur mise à jour offre:", err4);
+                }
+              );
+              
+              // Mettre à jour le statut de la demande
+              db.query(
+                "UPDATE demandes SET status = 'accepted', trip_id = ? WHERE id = ?",
+                [tripId, offre.demande_id],
+                (err5) => {
+                  if (err5) console.error("Erreur mise à jour demande:", err5);
+                }
+              );
+              
+              res.json({ 
+                success: true, 
+                message: "Offre acceptée, trajet créé",
+                tripId: tripId,
+                prix_final: offre.prix_propose
+              });
+            }
+          );
+        }
+      );
+    }
+  );
+});
+
+// ── Récupérer l'historique des négociations d'une offre ──
+app.get("/api/client/offre-negociations/:offre_id", authenticate, (req, res) => {
+  const { offre_id } = req.params;
+  
+  db.query(
+    `SELECT n.*, 
+            CASE 
+              WHEN n.type = 'chauffeur' THEN CONCAT('Chauffeur: ', u.nom, ' ', u.prenom)
+              ELSE 'Vous'
+            END as auteur
+     FROM negociations n
+     LEFT JOIN trajet_offres o ON n.offre_id = o.id
+     LEFT JOIN drivers d ON o.chauffeur_id = d.id
+     LEFT JOIN users u ON d.user_id = u.id
+     WHERE n.offre_id = ?
+     ORDER BY n.created_at ASC`,
+    [offre_id],
+    (err, results) => {
+      if (err) return res.status(500).json({ message: "Erreur serveur" });
+      res.json(results);
+    }
+  );
+});
+
+// ── Récupérer l'historique des négociations d'une offre ──
+app.get("/api/offre/negociations/:offre_id", authenticate, (req, res) => {
+  const { offre_id } = req.params;
+  
+  db.query(
+    `SELECT 
+      n.id,
+      n.type,
+      n.prix_propose,
+      n.message,
+      n.created_at,
+      CASE 
+        WHEN n.type = 'chauffeur' THEN CONCAT('Chauffeur: ', u.nom, ' ', u.prenom)
+        ELSE CONCAT('Client: ', u2.nom, ' ', u2.prenom)
+      END as auteur
+    FROM negociations n
+    JOIN trajet_offres o ON n.offre_id = o.id
+    LEFT JOIN drivers d ON o.chauffeur_id = d.id
+    LEFT JOIN users u ON d.user_id = u.id
+    LEFT JOIN users u2 ON o.client_id = u2.id
+    WHERE n.offre_id = ?
+    ORDER BY n.created_at ASC`,
+    [offre_id],
+    (err, results) => {
+      if (err) return res.status(500).json({ message: "Erreur serveur" });
+      res.json(results);
+    }
+  );
+});
+
+// ── Client voit ses offres (avec statut et prix) ──
+app.get("/api/client/mes-offres", authenticate, (req, res) => {
+  db.query(
+    `SELECT 
+      o.id as offre_id,
+      o.prix_propose as prix_actuel,
+      o.statut,
+      o.message,
+      o.created_at,
+      o.expires_at,
+      d.id as demande_id,
+      d.depart,
+      d.destination,
+      d.date_depart,
+      d.heure_depart,
+      d.places,
+      dr.id as chauffeur_id,
+      u.nom as chauffeur_nom,
+      u.prenom as chauffeur_prenom,
+      u.telephone as chauffeur_telephone,
+      dr.vehicle_type,
+      dr.vehicle_plate,
+      (SELECT COUNT(*) FROM negociations n WHERE n.offre_id = o.id) as nb_negociations
+    FROM trajet_offres o
+    JOIN demandes d ON o.demande_id = d.id
+    JOIN drivers dr ON o.chauffeur_id = dr.id
+    JOIN users u ON dr.user_id = u.id
+    WHERE d.user_id = ?
+    ORDER BY o.created_at DESC`,
+    [req.user.id],
+    (err, results) => {
+      if (err) return res.status(500).json({ message: "Erreur serveur" });
+      res.json(results);
+    }
+  );
+});
+
+// ── Chauffeur voit ses offres ──
+app.get("/api/driver/mes-offres", authenticateDriver, (req, res) => {
+  const chauffeur_id = req.driver.driverId;
+  
+  db.query(
+    `SELECT 
+      o.id as offre_id,
+      o.prix_propose,
+      o.statut,
+      o.message,
+      o.created_at,
+      o.expires_at,
+      d.id as demande_id,
+      d.depart,
+      d.destination,
+      d.date_depart,
+      d.heure_depart,
+      d.places,
+      u.id as client_id,
+      u.nom as client_nom,
+      u.prenom as client_prenom,
+      u.telephone as client_telephone,
+      (SELECT COUNT(*) FROM negociations n WHERE n.offre_id = o.id) as nb_negociations
+    FROM trajet_offres o
+    JOIN demandes d ON o.demande_id = d.id
+    JOIN users u ON d.user_id = u.id
+    WHERE o.chauffeur_id = ?
+    ORDER BY o.created_at DESC`,
+    [chauffeur_id],
+    (err, results) => {
+      if (err) return res.status(500).json({ message: "Erreur serveur" });
+      res.json(results);
     }
   );
 });
@@ -743,6 +1578,59 @@ app.delete("/api/trips/delete/:id", authenticateDriver, (req, res) => {
       if (result2.affectedRows === 0) return res.status(404).json({ message: "Trajet introuvable" });
       res.json({ success: true, message: "Trajet supprimé" });
     });
+  });
+});
+
+// ── Vérifier et supprimer les trajets expirés (date dépassée de plus de 24h) ──
+app.get("/api/driver/check-expired-trips", authenticateDriver, (req, res) => {
+  const { driver_id } = req.query;
+  
+  console.log("📥 Appel check-expired-trips - driver_id:", driver_id);
+  
+  if (!driver_id) {
+    return res.status(400).json({ message: "driver_id requis" });
+  }
+
+  // Trouver les trajets dont la date est dépassée de plus de 24h et qui ne sont pas terminés
+  const sql = `
+    SELECT id, heure, depart, destination 
+    FROM trajets 
+    WHERE user_id = (SELECT user_id FROM drivers WHERE id = ?)
+    AND (status IS NULL OR status != 'completed' AND status != 'cancelled')
+    AND heure < DATE_SUB(NOW(), INTERVAL 24 HOUR)
+  `;
+  
+  db.query(sql, [driver_id], (err, results) => {
+    if (err) {
+      console.error("❌ Erreur recherche trajets expirés:", err);
+      return res.status(500).json({ message: "Erreur serveur", error: err.message });
+    }
+    
+    console.log(`📋 ${results.length} trajets expirés trouvés`);
+    
+    if (results.length > 0) {
+      const ids = results.map(r => r.id);
+      const placeholders = ids.map(() => '?').join(',');
+      
+      db.query(
+        `UPDATE trajets SET status = 'expired' WHERE id IN (${placeholders})`,
+        ids,
+        (err2) => {
+          if (err2) {
+            console.error("❌ Erreur mise à jour trajets expirés:", err2);
+            return res.status(500).json({ message: "Erreur serveur" });
+          }
+          
+          res.json({ 
+            success: true, 
+            expired_count: results.length,
+            expired_trips: results 
+          });
+        }
+      );
+    } else {
+      res.json({ success: true, expired_count: 0 });
+    }
   });
 });
 

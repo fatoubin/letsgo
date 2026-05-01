@@ -49,50 +49,61 @@ export default function TripReservationScreen() {
     return () => sub.remove();
   }, []);
 
-  useEffect(() => {
-    let sub: Location.LocationSubscription;
+  // Dans TripReservation.tsx, remplacer la partie GPS
 
-    (async () => {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== "granted") {
-        Alert.alert("Erreur", "Permission GPS refusée");
-        return;
-      }
+let lastLocationSent = 0;
 
-      sub = await Location.watchPositionAsync(
-        { accuracy: Location.Accuracy.Balanced, timeInterval: 5000, distanceInterval: 10 },
-        async loc => {
-          const pos = { latitude: loc.coords.latitude, longitude: loc.coords.longitude };
-          setDriverLocation(pos);
+useEffect(() => {
+  let sub: Location.LocationSubscription;
 
-          // ── Throttle 10s + JWT ──
-          const now = Date.now();
-          if (driverId && now - lastLocationSent > 10000) {
-            lastLocationSent = now;
-            try {
-              const token = await SecureStore.getItemAsync("token");
-              await fetch(`${API_URL}/api/driver/update_location`, {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                  Authorization: `Bearer ${token}`
-                },
-                body: JSON.stringify({ driver_id: driverId, lat: pos.latitude, lng: pos.longitude })
-              });
-            } catch (e) {
-              console.log("❌ LOCATION UPDATE ERROR", e);
-            }
-          }
+  (async () => {
+    const { status } = await Location.requestForegroundPermissionsAsync();
+    if (status !== "granted") {
+      Alert.alert("Erreur", "Permission GPS refusée");
+      return;
+    }
 
-          if (mapRef.current) {
-            mapRef.current.animateCamera({ center: pos, heading, zoom: 17, pitch: 45 });
+    sub = await Location.watchPositionAsync(
+      { 
+        accuracy: Location.Accuracy.High, 
+        timeInterval: 3000,   // Mise à jour toutes les 3 secondes
+        distanceInterval: 5    // 5 mètres minimum
+      },
+      async loc => {
+        const pos = { latitude: loc.coords.latitude, longitude: loc.coords.longitude };
+        setDriverLocation(pos);
+
+        // Envoi au serveur avec throttle (toutes les 5 secondes max)
+        const now = Date.now();
+        if (driverId && now - lastLocationSent >= 5000) {
+          lastLocationSent = now;
+          try {
+            const token = await SecureStore.getItemAsync("token");
+            await fetch(`${API_URL}/api/driver/update_location`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${token}`
+              },
+              body: JSON.stringify({ driver_id: driverId, lat: pos.latitude, lng: pos.longitude })
+            });
+            console.log(`📍 Position chauffeur envoyée: ${pos.latitude}, ${pos.longitude}`);
+          } catch (e) {
+            console.log("❌ LOCATION UPDATE ERROR", e);
           }
         }
-      );
-    })();
 
-    return () => { if (sub) sub.remove(); };
-  }, [heading, driverId]);
+        if (mapRef.current) {
+          mapRef.current.animateCamera({ center: pos, heading, zoom: 17, pitch: 45 });
+        }
+      }
+    );
+  })();
+
+  return () => { 
+    if (sub) sub.remove();
+  };
+}, [heading, driverId]);
 
   // ── Geocoding avec fallback ──
   useEffect(() => {
