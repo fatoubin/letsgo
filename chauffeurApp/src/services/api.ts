@@ -116,6 +116,7 @@ export async function createDriverTrip(payload: {
   seats: number;
   price: number;
 }) {
+  console.log("📤 createDriverTrip payload:", payload);
   return fetchWithAuth("/api/trips/create", {
     method: "POST",
     body: JSON.stringify(payload)
@@ -196,6 +197,38 @@ export async function rejectDemande(demandeId: number) {
     method: "POST",
     body: JSON.stringify({ demande_id: demandeId, status: "rejected" })
   });
+}
+
+export async function makeOffer(payload: {
+  demande_id: number;
+  prix_propose: number;
+  message?: string;
+}) {
+  return fetchWithAuth("/api/driver/make-offer", {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
+}
+
+// services/api.ts - Version corrigée
+
+export async function expiredTrip(driverId: number) {
+  console.log("📤 expiredTrip appelé avec driverId:", driverId);
+  
+  if (!driverId || isNaN(driverId)) {
+    console.error("❌ driverId invalide:", driverId);
+    return { success: false, expired_count: 0 };
+  }
+  
+  try {
+    const result = await fetchWithAuth(`/api/driver/check-expired-trips?driver_id=${driverId}`);
+    console.log("📥 expiredTrip résultat:", result);
+    return result;
+  } catch (error: any) {
+    console.error("❌ expiredTrip error:", error?.message || error);
+    // Retourner un résultat par défaut pour ne pas bloquer l'application
+    return { success: false, expired_count: 0, error: error?.message };
+  }
 }
 
 /* =========================

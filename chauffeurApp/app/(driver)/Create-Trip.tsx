@@ -15,7 +15,7 @@ import * as SecureStore from "expo-secure-store";
 import PrimaryButton from "../../src/components/PrimaryButton";
 import { COLORS } from "../../src/styles/colors";
 import { globalStyles } from "../../src/styles/globalStyles";
-import { createDriverTrip, getToken, API_URL } from "../../src/services/api";
+import { createDriverTrip, getToken } from "../../src/services/api";
 
 export default function CreateTripScreen() {
 
@@ -30,7 +30,7 @@ export default function CreateTripScreen() {
   const [price, setPrice] = useState("");
   const [loading, setLoading] = useState(false);
 
-  // ── Lire driverId depuis SecureStore au montage ──
+  // Lire driverId depuis SecureStore au montage
   useEffect(() => {
     const loadDriverData = async () => {
       try {
@@ -47,7 +47,7 @@ export default function CreateTripScreen() {
           Alert.alert(
             "Session invalide",
             "Veuillez vous reconnecter",
-            [{ text: "OK", onPress: () => router.replace("/(auth)/DriverLogin") }]
+            [{ text: "OK", onPress: () => router.replace("/(auth)/driver-login") }]
           );
         }
         
@@ -56,7 +56,7 @@ export default function CreateTripScreen() {
           Alert.alert(
             "Session expirée",
             "Veuillez vous reconnecter",
-            [{ text: "OK", onPress: () => router.replace("/(auth)/DriverLogin") }]
+            [{ text: "OK", onPress: () => router.replace("/(auth)/driver-login") }]
           );
         }
       } catch (error) {
@@ -67,10 +67,10 @@ export default function CreateTripScreen() {
   }, []);
 
   const handleCreateTrip = async () => {
-
+    // Validation des champs
     if (!driverId || isNaN(driverId)) {
       Alert.alert("Erreur", "Chauffeur non identifié. Veuillez vous reconnecter.");
-      router.replace("/(auth)/DriverLogin");
+      router.replace("/(auth)/driver-login");
       return;
     }
 
@@ -120,6 +120,7 @@ export default function CreateTripScreen() {
         price: Number(price) || 0
       });
 
+      // Utiliser la fonction createDriverTrip existante
       const result = await createDriverTrip({
         driverId,
         departure,
@@ -139,12 +140,11 @@ export default function CreateTripScreen() {
     } catch (error: any) {
       console.error("❌ Erreur création trajet:", error);
       
-      // Gérer spécifiquement les erreurs d'authentification
       if (error.message?.includes("Token") || error.message?.includes("authentifi")) {
         Alert.alert(
           "Session expirée",
           "Votre session a expiré. Veuillez vous reconnecter.",
-          [{ text: "OK", onPress: () => router.replace("/(auth)/DriverLogin") }]
+          [{ text: "OK", onPress: () => router.replace("/(auth)/driver-login") }]
         );
       } else {
         Alert.alert("Erreur", error.message || "Erreur serveur");
@@ -252,7 +252,6 @@ export default function CreateTripScreen() {
           )}
         </View>
       </View>
-
     </View>
   );
 }

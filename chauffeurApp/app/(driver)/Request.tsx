@@ -7,14 +7,16 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Alert,
-  Switch
+  Switch,
+  Modal,
+  TextInput
 } from "react-native";
 
 import * as SecureStore from "expo-secure-store";
 
 import { COLORS } from "../../src/styles/colors";
 import { globalStyles } from "../../src/styles/globalStyles";
-import { getDriverRequests, acceptDemande, rejectDemande } from "../../src/services/api";
+import { getDriverRequests, acceptDemande, rejectDemande, makeOffer } from "../../src/services/api";
 
 type Request = {
   id: number;
@@ -34,6 +36,12 @@ export default function DriverRequestsScreen() {
   const [requests, setRequests] = useState<Request[]>([]);
   const [actionLoading, setActionLoading] = useState<number | null>(null);
   const [soundEnabled, setSoundEnabled] = useState(true);
+  
+  // États pour la modale de négociation
+  const [showPriceModal, setShowPriceModal] = useState(false);
+  const [selectedDemande, setSelectedDemande] = useState<any>(null);
+  const [proposedPrice, setProposedPrice] = useState("");
+  const [negotiationMessage, setNegotiationMessage] = useState("");
 
   useEffect(() => {
     const init = async () => {
@@ -50,19 +58,24 @@ export default function DriverRequestsScreen() {
     init();
   }, []);
 
-  const fetchRequests = async (id: number) => {
-    try {
-      setLoading(true);
-      const data = await getDriverRequests(id);
-      console.log("📥 Demandes reçues:", JSON.stringify(data));
-      setRequests(Array.isArray(data) ? data : []);
-    } catch (error) {
-      console.log("❌ DRIVER REQUESTS ERROR", error);
-      Alert.alert("Erreur", "Impossible de charger les demandes");
-    } finally {
-      setLoading(false);
-    }
-  };
+  // Dans fetchRequests, filtrer uniquement les pending
+const fetchRequests = async (id: number) => {
+  try {
+    setLoading(true);
+    const data = await getDriverRequests(id);
+    console.log("📥 Demandes reçues:", JSON.stringify(data));
+    // Filtrer uniquement les demandes en attente
+    const pendingRequests = Array.isArray(data) 
+      ? data.filter((item: Request) => item.status === "pending")
+      : [];
+    setRequests(pendingRequests);
+  } catch (error) {
+    console.log("❌ DRIVER REQUESTS ERROR", error);
+    Alert.alert("Erreur", "Impossible de charger les demandes");
+  } finally {
+    setLoading(false);
+  }
+};
 
   const handleAccept = async (id: number) => {
     setActionLoading(id);
@@ -90,6 +103,32 @@ export default function DriverRequestsScreen() {
     }
   };
 
+  const handleMakeOffer = async () => {
+    if (!proposedPrice || Number(proposedPrice) <= 0) {
+      Alert.alert("Erreur", "Veuillez entrer un prix valide");
+      return;
+    }
+    
+    if (!selectedDemande) return;
+    
+    try {
+      const result = await makeOffer({
+        demande_id: selectedDemande.id,
+        prix_propose: Number(proposedPrice),
+        message: negotiationMessage
+      });
+      
+      Alert.alert("✅ Succès", "Offre envoyée au client");
+      setShowPriceModal(false);
+      setProposedPrice("");
+      setNegotiationMessage("");
+      setSelectedDemande(null);
+      if (driverId) await fetchRequests(driverId);
+    } catch (error: any) {
+      Alert.alert("Erreur", error.message || "Impossible d'envoyer l'offre");
+    }
+  };
+
   const formatPrice = (price?: number) => {
     if (!price) return null;
     return price.toLocaleString("fr-FR") + " FCFA";
@@ -108,6 +147,17 @@ export default function DriverRequestsScreen() {
       <Text style={styles.info}>- {item.prenom} {item.nom}</Text>
       <Text style={styles.info}>- {item.telephone}</Text>
       <Text style={styles.info}>- {item.places} place(s) demandée(s)</Text>
+
+      {/* Bouton Faire une offre */}
+      <TouchableOpacity 
+        style={styles.offerButton}
+        onPress={() => {
+          setSelectedDemande(item);
+          setShowPriceModal(true);
+        }}
+      >
+        <Text style={styles.offerButtonText}>💰 Faire une offre</Text>
+      </TouchableOpacity>
 
       <View style={styles.actions}>
         {item.status === "pending" && (
@@ -190,6 +240,72 @@ export default function DriverRequestsScreen() {
           </Text>
         </>
       )}
+
+      {/* Modal pour faire une offre de prix */}
+      <Modal
+        visible={showPriceModal}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setShowPriceModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContainer}>
+            <Text style={styles.modalTitle}>💰 Faire une offre</Text>
+            <Text style={styles.modalSubtitle}>
+              Proposez un prix pour ce trajet
+            </Text>
+
+            {selectedDemande && (
+              <Text style={styles.modalRoute}>
+                {selectedDemande.depart} → {selectedDemande.destination}
+              </Text>
+            )}
+
+            <Text style={styles.priceLabel}>Prix proposé (FCFA)</Text>
+            <TextInput
+              style={styles.priceInput}
+              placeholder="Ex: 5000"
+              placeholderTextColor={COLORS.textMuted}
+              keyboardType="numeric"
+              value={proposedPrice}
+              onChangeText={setProposedPrice}
+            />
+            <Text style={styles.currencyHint}>Montant total pour la course</Text>
+
+            <Text style={styles.messageLabel}>Message (optionnel)</Text>
+            <TextInput
+              style={styles.messageInput}
+              placeholder="Ajoutez un message au client..."
+              placeholderTextColor={COLORS.textMuted}
+              multiline={true}
+              numberOfLines={3}
+              value={negotiationMessage}
+              onChangeText={setNegotiationMessage}
+            />
+
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={styles.modalCancelButton}
+                onPress={() => {
+                  setShowPriceModal(false);
+                  setProposedPrice("");
+                  setNegotiationMessage("");
+                  setSelectedDemande(null);
+                }}
+              >
+                <Text style={styles.modalCancelButtonText}>Annuler</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.modalConfirmButton}
+                onPress={handleMakeOffer}
+              >
+                <Text style={styles.modalConfirmButtonText}>Envoyer l'offre</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -313,5 +429,119 @@ const styles = StyleSheet.create({
     marginBottom: 30,
     paddingHorizontal: 20,
     fontStyle: "italic",
+  },
+  offerButton: {
+    backgroundColor: "#3B82F6",
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 10,
+    marginTop: 8,
+    alignItems: "center",
+  },
+  offerButtonText: {
+    color: "#fff",
+    fontWeight: "600",
+    fontSize: 13,
+  },
+  // Styles de la modale
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  modalContainer: {
+    backgroundColor: "#1F2937",
+    borderRadius: 20,
+    padding: 20,
+    width: "85%",
+    maxWidth: 350,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: "#fff",
+    textAlign: "center",
+    marginBottom: 8,
+  },
+  modalSubtitle: {
+    fontSize: 14,
+    color: COLORS.textMuted,
+    textAlign: "center",
+    marginBottom: 20,
+  },
+  modalRoute: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: "#fff",
+    textAlign: "center",
+    marginBottom: 16,
+    backgroundColor: "#111827",
+    padding: 10,
+    borderRadius: 10,
+  },
+  priceLabel: {
+    color: COLORS.textMuted,
+    fontSize: 14,
+    marginBottom: 6,
+    marginTop: 10,
+  },
+  priceInput: {
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    padding: 14,
+    fontSize: 16,
+    color: "#000",
+  },
+  currencyHint: {
+    color: COLORS.textMuted,
+    fontSize: 12,
+    marginTop: 4,
+    textAlign: "right",
+  },
+  messageLabel: {
+    color: COLORS.textMuted,
+    fontSize: 14,
+    marginBottom: 6,
+    marginTop: 12,
+  },
+  messageInput: {
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    padding: 14,
+    fontSize: 14,
+    color: "#000",
+    minHeight: 80,
+    textAlignVertical: "top",
+  },
+  modalButtons: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginTop: 20,
+    gap: 12,
+  },
+  modalCancelButton: {
+    flex: 1,
+    backgroundColor: "#374151",
+    paddingVertical: 12,
+    borderRadius: 12,
+    alignItems: "center",
+  },
+  modalCancelButtonText: {
+    color: COLORS.textMuted,
+    fontWeight: "600",
+    fontSize: 16,
+  },
+  modalConfirmButton: {
+    flex: 1,
+    backgroundColor: COLORS.primary,
+    paddingVertical: 12,
+    borderRadius: 12,
+    alignItems: "center",
+  },
+  modalConfirmButtonText: {
+    color: "#fff",
+    fontWeight: "600",
+    fontSize: 16,
   },
 });
