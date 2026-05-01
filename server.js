@@ -2313,6 +2313,256 @@ app.put("/api/client/reservations-interurbaines/:id/ajouter-places", authenticat
     }
   );
 });
+// ================= PAIEMENTS WAVE / ORANGE MONEY =================
+
+// ── 1. Terminer une course (chauffeur) ──
+app.post("/api/trips/terminer-course", authenticateDriver, (req, res) => {
+    const { reservation_id, montant_final } = req.body;
+    
+    if (!reservation_id || !montant_final) {
+        return res.status(400).json({ message: "reservation_id et montant_final requis" });
+    }
+    
+    // Vérifier que la réservation existe et appartient au bon chauffeur
+    db.query(
+        `SELECT r.*, t.user_id as chauffeur_id 
+         FROM reservations r
+         JOIN trajets t ON r.trip_id = t.id
+         WHERE r.id = ? AND t.user_id = ? AND r.course_terminee = FALSE`,
+        [reservation_id, req.driver.id],
+        (err, results) => {
+            if (err) return res.status(500).json({ message: "Erreur serveur" });
+            if (results.length === 0) {
+                return res.status(404).json({ message: "Réservation non trouvée ou déjà terminée" });
+            }
+            
+            const reservation = results[0];
+            
+            // Mettre à jour le montant si différent
+            db.query(
+                `UPDATE reservations 
+                 SET course_terminee = TRUE, 
+                     course_terminee_at = NOW(),
+                     prix = ?
+                 WHERE id = ?`,
+                [montant_final, reservation_id],
+                (err2) => {
+                    if (err2) return res.status(500).json({ message: "Erreur mise à jour" });
+                    
+                    res.json({ 
+                        success: true, 
+                        message: "Course terminée",
+                        montant: montant_final
+                    });
+                }
+            );
+        }
+    );
+});
+
+// ── 2. Initier un paiement Wave/OM (passager) ──
+app.post("/api/paiements/initier", authenticate, (req, res) => {
+    const { reservation_id, operateur, telephone } = req.body;
+    
+    if (!reservation_id || !operateur || !telephone) {
+        return res.status(400).json({ message: "reservation_id, operateur et telephone requis" });
+    }
+    
+    if (!['wave', 'om'].includes(operateur)) {
+        return res.status(400).json({ message: "Opérateur invalide. Choisir 'wave' ou 'om'" });
+    }
+    
+    // Récupérer les infos de la réservation
+    db.query(
+        `SELECT r.*, 
+                u.nom as passager_nom, u.telephone as passager_telephone,
+                t.user_id as chauffeur_id,
+                c.nom as chauffeur_nom, c.prenom as chauffeur_prenom,
+                c.telephone as chauffeur_telephone
+         FROM reservations r
+         JOIN users u ON r.user_id = u.id
+         JOIN trajets t ON r.trip_id = t.id
+         JOIN users c ON t.user_id = c.id
+         WHERE r.id = ? AND r.user_id = ? AND r.course_terminee = TRUE AND r.paiement_effectue = FALSE`,
+        [reservation_id, req.user.id],
+        (err, results) => {
+            if (err) return res.status(500).json({ message: "Erreur serveur" });
+            if (results.length === 0) {
+                return res.status(404).json({ message: "Réservation non trouvée ou déjà payée" });
+            }
+            
+            const reservation = results[0];
+            
+            // Générer un code de confirmation unique
+            const codeConfirmation = Math.floor(100000 + Math.random() * 900000).toString();
+            
+            // Créer la transaction
+            db.query(
+                `INSERT INTO transactions_mobile 
+                 (reservation_id, passager_id, chauffeur_id, montant, telephone_passager, telephone_chauffeur, operateur, code_confirmation, statut)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending')`,
+                [
+                    reservation_id, 
+                    req.user.id, 
+                    reservation.chauffeur_id, 
+                    reservation.prix,
+                    telephone,
+                    reservation.chauffeur_telephone,
+                    operateur,
+                    codeConfirmation
+                ],
+                (err2, result) => {
+                    if (err2) return res.status(500).json({ message: "Erreur création transaction" });
+                    
+                    // Retourner les infos pour le paiement
+                    const infosPaiement = {
+                        transaction_id: result.insertId,
+                        montant: reservation.prix,
+                        telephone_destinataire: operateur === 'wave' ? '786123456' : '786123456', // Numéro Wave/OM du chauffeur
+                        operateur: operateur,
+                        reference: `LETGO-${reservation_id}-${Date.now()}`,
+                        code_confirmation: codeConfirmation
+                    };
+                    
+                    res.json(infosPaiement);
+                }
+            );
+        }
+    );
+});
+
+// ── 3. Confirmer un paiement (après que l'utilisateur a payé) ──
+app.post("/api/paiements/confirmer", authenticate, (req, res) => {
+    const { transaction_id, code_confirmation } = req.body;
+    
+    if (!transaction_id || !code_confirmation) {
+        return res.status(400).json({ message: "transaction_id et code_confirmation requis" });
+    }
+    
+    db.query(
+        `SELECT * FROM transactions_mobile 
+         WHERE id = ? AND passager_id = ? AND statut = 'pending'`,
+        [transaction_id, req.user.id],
+        (err, results) => {
+            if (err) return res.status(500).json({ message: "Erreur serveur" });
+            if (results.length === 0) {
+                return res.status(404).json({ message: "Transaction non trouvée" });
+            }
+            
+            const transaction = results[0];
+            
+            if (transaction.code_confirmation !== code_confirmation) {
+                return res.status(400).json({ message: "Code de confirmation invalide" });
+            }
+            
+            // Valider la transaction et la réservation
+            db.query(
+                `UPDATE transactions_mobile 
+                 SET statut = 'confirmed', confirmed_at = NOW()
+                 WHERE id = ?`,
+                [transaction_id],
+                (err2) => {
+                    if (err2) return res.status(500).json({ message: "Erreur validation" });
+                    
+                    db.query(
+                        `UPDATE reservations 
+                         SET paiement_effectue = TRUE, methode_paiement = ?
+                         WHERE id = ?`,
+                        [transaction.operateur, transaction.reservation_id],
+                        (err3) => {
+                            if (err3) return res.status(500).json({ message: "Erreur mise à jour réservation" });
+                            
+                            res.json({ 
+                                success: true, 
+                                message: `Paiement confirmé avec succès via ${transaction.operateur === 'wave' ? 'Wave' : 'Orange Money'}` 
+                            });
+                        }
+                    );
+                }
+            );
+        }
+    );
+});
+
+// ── 4. Récupérer les courses terminées à payer (passager) ──
+app.get("/api/client/courses-a-payer", authenticate, (req, res) => {
+    db.query(
+        `SELECT r.*, 
+                t.depart, t.destination, t.heure,
+                u.nom as chauffeur_nom, u.prenom as chauffeur_prenom, u.telephone as chauffeur_telephone
+         FROM reservations r
+         JOIN trajets t ON r.trip_id = t.id
+         JOIN users u ON t.user_id = u.id
+         WHERE r.user_id = ? 
+           AND r.course_terminee = TRUE 
+           AND r.paiement_effectue = FALSE
+         ORDER BY r.course_terminee_at DESC`,
+        [req.user.id],
+        (err, results) => {
+            if (err) return res.status(500).json({ message: "Erreur serveur" });
+            res.json(results);
+        }
+    );
+});
+
+// ── 5. Vérifier le statut d'une transaction ──
+app.get("/api/paiements/statut/:reservation_id", authenticate, (req, res) => {
+    const { reservation_id } = req.params;
+    
+    db.query(
+        `SELECT t.*, r.paiement_effectue, r.course_terminee
+         FROM transactions_mobile t
+         JOIN reservations r ON t.reservation_id = r.id
+         WHERE t.reservation_id = ? AND (t.passager_id = ? OR r.user_id = ?)`,
+        [reservation_id, req.user.id, req.user.id],
+        (err, results) => {
+            if (err) return res.status(500).json({ message: "Erreur serveur" });
+            if (results.length === 0) {
+                return res.json({ statut: "not_found", paiement_effectue: false });
+            }
+            
+            res.json({
+                statut: results[0].statut,
+                operateur: results[0].operateur,
+                montant: results[0].montant,
+                paiement_effectue: results[0].paiement_effectue,
+                course_terminee: results[0].course_terminee
+            });
+        }
+    );
+});
+
+// ── 6. Récupérer les gains du chauffeur ──
+app.get("/api/driver/gains", authenticateDriver, (req, res) => {
+    db.query(
+        `SELECT 
+            SUM(t.montant) as total_gains,
+            COUNT(t.id) as total_courses_payees,
+            t.operateur,
+            MONTH(t.confirmed_at) as mois,
+            YEAR(t.confirmed_at) as annee
+         FROM transactions_mobile t
+         WHERE t.chauffeur_id = ? AND t.statut = 'confirmed'
+         GROUP BY t.operateur, YEAR(t.confirmed_at), MONTH(t.confirmed_at)
+         ORDER BY annee DESC, mois DESC`,
+        [req.driver.id],
+        (err, results) => {
+            if (err) return res.status(500).json({ message: "Erreur serveur" });
+            
+            // Total général
+            db.query(
+                "SELECT SUM(montant) as total FROM transactions_mobile WHERE chauffeur_id = ? AND statut = 'confirmed'",
+                [req.driver.id],
+                (err2, totalResult) => {
+                    res.json({
+                        total_general: totalResult[0]?.total || 0,
+                        details: results
+                    });
+                }
+            );
+        }
+    );
+});
 // ================= TEST =================
 app.get("/api/test", (req, res) => {
   db.query("SELECT 1+1 AS result", (err, results) => {

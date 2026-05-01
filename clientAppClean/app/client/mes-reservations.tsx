@@ -1,9 +1,10 @@
-import { View, Text, FlatList, StyleSheet, ActivityIndicator, TouchableOpacity, Alert, Linking } from "react-native";
+import { View, Text, FlatList, StyleSheet, ActivityIndicator, TouchableOpacity, Alert, Linking, Modal, TextInput } from "react-native";
 import { useFocusEffect } from "expo-router";
 import { useCallback, useState, useEffect } from "react";
 import { router } from "expo-router";
-import { getMesReservations, annulerReservation } from "../../lib/api";
+import { getMesReservations, annulerReservation, API_URL, getToken } from "../../lib/api";
 import { Ionicons } from "@expo/vector-icons";
+import * as LinkingLib from "expo-linking";
 
 type Reservation = {
   id: number;
@@ -24,21 +25,47 @@ type Reservation = {
   chauffeur_lat: number;
   chauffeur_lng: number;
   is_online: boolean;
+  course_terminee?: boolean;
+  paiement_effectue?: boolean;
 };
 
-type Filtre = "TOUTES" | "accepted" | "rejected" | "pending";
+type Filtre = "TOUTES" | "accepted" | "rejected" | "pending" | "a_payer";
+
+type TransactionData = {
+  transaction_id: number;
+  montant: number;
+  telephone_destinataire: string;
+  operateur: string;
+  reference: string;
+  code_confirmation: string;
+};
 
 export default function MesReservations() {
   const [reservations, setReservations] = useState<Reservation[]>([]);
   const [filteredReservations, setFilteredReservations] = useState<Reservation[]>([]);
   const [loading, setLoading] = useState(true);
   const [filtre, setFiltre] = useState<Filtre>("TOUTES");
+  
+  // États pour le paiement
+  const [showPaiement, setShowPaiement] = useState(false);
+  const [selectedReservation, setSelectedReservation] = useState<Reservation | null>(null);
+  const [paymentStep, setPaymentStep] = useState<'choose' | 'payment'>('choose');
+  const [operateur, setOperateur] = useState<'wave' | 'om' | null>(null);
+  const [telephone, setTelephone] = useState("");
+  const [transaction, setTransaction] = useState<TransactionData | null>(null);
+  const [codeConfirmation, setCodeConfirmation] = useState("");
+  const [paymentLoading, setPaymentLoading] = useState(false);
 
   const loadReservations = async () => {
     try {
       setLoading(true);
       const data = await getMesReservations();
-      setReservations(Array.isArray(data) ? data : []);
+      const enrichedData = (Array.isArray(data) ? data : []).map((item: any) => ({
+        ...item,
+        course_terminee: item.course_terminee || false,
+        paiement_effectue: item.paiement_effectue || false,
+      }));
+      setReservations(enrichedData);
     } catch (error) {
       console.error(error);
       Alert.alert("Erreur", "Impossible de charger vos réservations");
@@ -56,6 +83,14 @@ export default function MesReservations() {
   const applyFilter = useCallback(() => {
     if (filtre === "TOUTES") {
       setFilteredReservations(reservations);
+    } else if (filtre === "a_payer") {
+      setFilteredReservations(
+        reservations.filter(r => 
+          r.reservation_status === 'accepted' && 
+          r.course_terminee === true && 
+          r.paiement_effectue === false
+        )
+      );
     } else {
       setFilteredReservations(reservations.filter(r => r.reservation_status === filtre));
     }
@@ -86,15 +121,8 @@ export default function MesReservations() {
   };
 
   const handleSeeLocation = (reservation: Reservation) => {
-    console.log("📍 Ouverture Google Maps avec itinéraire:", { 
-      lat: reservation.chauffeur_lat, 
-      lng: reservation.chauffeur_lng 
-    });
-    
     if (reservation.chauffeur_lat && reservation.chauffeur_lng) {
-      // URL pour obtenir l'itinéraire depuis la position actuelle vers le chauffeur
       const url = `https://www.google.com/maps/dir/?api=1&destination=${reservation.chauffeur_lat},${reservation.chauffeur_lng}&travelmode=driving`;
-      
       Linking.openURL(url).catch(err => {
         console.error("Erreur ouverture carte:", err);
         Alert.alert("Erreur", "Impossible d'ouvrir la carte");
@@ -137,6 +165,132 @@ export default function MesReservations() {
     });
   };
 
+  // ================= FONCTIONS DE PAIEMENT =================
+
+  const resetPaiement = () => {
+    setShowPaiement(false);
+    setSelectedReservation(null);
+    setPaymentStep('choose');
+    setOperateur(null);
+    setTelephone("");
+    setTransaction(null);
+    setCodeConfirmation("");
+    setPaymentLoading(false);
+  };
+
+  const initierPaiement = async () => {
+    if (!operateur) {
+      Alert.alert("Erreur", "Veuillez choisir un moyen de paiement");
+      return;
+    }
+    
+    if (!telephone || telephone.length < 9) {
+      Alert.alert("Erreur", "Veuillez entrer votre numéro de téléphone valide (9 chiffres)");
+      return;
+    }
+    
+    if (!selectedReservation) return;
+    
+    setPaymentLoading(true);
+    try {
+      const token = await getToken();
+      const response = await fetch(`${API_URL}/api/paiements/initier`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          reservation_id: selectedReservation.id,
+          operateur: operateur,
+          telephone: telephone,
+        }),
+      });
+      
+      const data = await response.json();
+      
+      if (data.transaction_id) {
+        setTransaction(data);
+        setPaymentStep('payment');
+        
+        // Ouvrir l'application mobile correspondante
+        if (operateur === 'wave') {
+          const waveUrl = `wave://send?number=${data.telephone_destinataire}&amount=${data.montant}`;
+          const canOpen = await LinkingLib.canOpenURL(waveUrl);
+          if (canOpen) {
+            await LinkingLib.openURL(waveUrl);
+          } else {
+            Alert.alert(
+              "Instructions Wave",
+              `1. Ouvrez l'application Wave\n2. Envoyez ${data.montant.toLocaleString()} FCFA au numéro :\n   ${data.telephone_destinataire}\n3. Saisissez le code ci-dessous`
+            );
+          }
+        } else if (operateur === 'om') {
+          const omUrl = `orangemoney://payment?phone=${data.telephone_destinataire}&amount=${data.montant}`;
+          const canOpen = await LinkingLib.canOpenURL(omUrl);
+          if (canOpen) {
+            await LinkingLib.openURL(omUrl);
+          } else {
+            Alert.alert(
+              "Instructions Orange Money",
+              `1. Ouvrez l'application Orange Money\n2. Envoyez ${data.montant.toLocaleString()} FCFA au numéro :\n   ${data.telephone_destinataire}\n3. Saisissez le code ci-dessous`
+            );
+          }
+        }
+      } else {
+        Alert.alert("Erreur", data.message || "Impossible d'initier le paiement");
+      }
+    } catch (error) {
+      console.error("Erreur initiation:", error);
+      Alert.alert("Erreur", "Impossible de contacter le serveur");
+    } finally {
+      setPaymentLoading(false);
+    }
+  };
+
+  const confirmerPaiement = async () => {
+    if (!codeConfirmation || codeConfirmation.length !== 6) {
+      Alert.alert("Erreur", "Veuillez entrer le code de confirmation à 6 chiffres");
+      return;
+    }
+    
+    if (!transaction) {
+      Alert.alert("Erreur", "Transaction introuvable");
+      return;
+    }
+    
+    setPaymentLoading(true);
+    try {
+      const token = await getToken();
+      const response = await fetch(`${API_URL}/api/paiements/confirmer`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          transaction_id: transaction.transaction_id,
+          code_confirmation: codeConfirmation,
+        }),
+      });
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        Alert.alert("Succès", data.message);
+        resetPaiement();
+        loadReservations();
+      } else {
+        Alert.alert("Erreur", data.message || "Code de confirmation invalide");
+      }
+    } catch (error) {
+      console.error("Erreur confirmation:", error);
+      Alert.alert("Erreur", "Impossible de confirmer le paiement");
+    } finally {
+      setPaymentLoading(false);
+    }
+  };
+
   if (loading) {
     return (
       <View style={styles.center}>
@@ -156,6 +310,7 @@ export default function MesReservations() {
           { key: "pending", label: "En cours", color: "#F59E0B" },
           { key: "accepted", label: "Acceptées", color: "#10B981" },
           { key: "rejected", label: "Refusées", color: "#EF4444" },
+          { key: "a_payer", label: "À payer", color: "#2563EB" },
         ].map((f) => (
           <TouchableOpacity
             key={f.key}
@@ -184,6 +339,8 @@ export default function MesReservations() {
             <Text style={styles.emptyText}>
               {filtre === "TOUTES" 
                 ? "Vous n'avez pas encore de réservation" 
+                : filtre === "a_payer"
+                ? "Aucune course à payer"
                 : `Aucune réservation ${filtre === "accepted" ? "acceptée" : filtre === "rejected" ? "refusée" : "en cours"}`}
             </Text>
           </View>
@@ -201,6 +358,21 @@ export default function MesReservations() {
                 </Text>
               </View>
             </View>
+
+            {/* Badge "Course terminée" si applicable */}
+            {item.reservation_status === 'accepted' && item.course_terminee && !item.paiement_effectue && (
+              <View style={styles.courseTermineeBadge}>
+                <Ionicons name="checkmark-done-circle" size={14} color="#10B981" />
+                <Text style={styles.courseTermineeText}>Course terminée - En attente de paiement</Text>
+              </View>
+            )}
+
+            {item.reservation_status === 'accepted' && item.paiement_effectue && (
+              <View style={styles.paidBadge}>
+                <Ionicons name="checkmark-circle" size={14} color="#10B981" />
+                <Text style={styles.paidText}>✓ Payée</Text>
+              </View>
+            )}
 
             {/* Date et heure */}
             <View style={styles.infoRow}>
@@ -243,14 +415,35 @@ export default function MesReservations() {
                     <Ionicons name="location-outline" size={16} color="#fff" />
                     <Text style={styles.actionButtonText}>Voir position</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity 
-                    style={styles.cancelButton}
-                    onPress={() => handleAnnuler(item)}
-                  >
-                    <Ionicons name="close-circle-outline" size={16} color="#fff" />
-                    <Text style={styles.actionButtonText}>Annuler</Text>
-                  </TouchableOpacity>
+                  {!item.course_terminee && !item.paiement_effectue && (
+                    <TouchableOpacity 
+                      style={styles.cancelButton}
+                      onPress={() => handleAnnuler(item)}
+                    >
+                      <Ionicons name="close-circle-outline" size={16} color="#fff" />
+                      <Text style={styles.actionButtonText}>Annuler</Text>
+                    </TouchableOpacity>
+                  )}
                 </View>
+                
+                {/* Bouton Payer - visible seulement si course terminée et non payée */}
+                {item.course_terminee && !item.paiement_effectue && (
+                  <TouchableOpacity 
+                    style={styles.payNowButton}
+                    onPress={() => {
+                      setSelectedReservation(item);
+                      setShowPaiement(true);
+                      setPaymentStep('choose');
+                      setOperateur(null);
+                      setTelephone("");
+                      setTransaction(null);
+                      setCodeConfirmation("");
+                    }}
+                  >
+                    <Ionicons name="cash-outline" size={18} color="#fff" />
+                    <Text style={styles.payNowText}>Payer maintenant</Text>
+                  </TouchableOpacity>
+                )}
               </View>
             )}
 
@@ -272,6 +465,120 @@ export default function MesReservations() {
           </View>
         )}
       />
+      
+      {/* MODAL DE PAIEMENT */}
+      <Modal transparent visible={showPaiement} animationType="slide" onRequestClose={resetPaiement}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContainer}>
+            <TouchableOpacity style={styles.modalCloseBtn} onPress={resetPaiement}>
+              <Ionicons name="close" size={24} color="#9AA4BF" />
+            </TouchableOpacity>
+            
+            <View style={styles.modalIconContainer}>
+              <Ionicons name="cash-outline" size={48} color="#10B981" />
+            </View>
+            
+            <Text style={styles.modalTitle}>Paiement de la course</Text>
+            <Text style={styles.modalAmount}>
+              {selectedReservation?.prix?.toLocaleString()} FCFA
+            </Text>
+            
+            {paymentStep === 'choose' ? (
+              <>
+                <Text style={styles.modalLabel}>Choisissez votre moyen de paiement</Text>
+                
+                <View style={styles.operatorContainer}>
+                  <TouchableOpacity
+                    style={[styles.operatorBtn, operateur === 'wave' && styles.operatorSelected]}
+                    onPress={() => setOperateur('wave')}
+                  >
+                    <Ionicons name="logo-wave" size={32} color={operateur === 'wave' ? "#fff" : "#9AA4BF"} />
+                    <Text style={[styles.operatorText, operateur === 'wave' && styles.operatorTextSelected]}>Wave</Text>
+                  </TouchableOpacity>
+                  
+                  <TouchableOpacity
+                    style={[styles.operatorBtn, operateur === 'om' && styles.operatorSelected]}
+                    onPress={() => setOperateur('om')}
+                  >
+                    <Ionicons name="phone-portrait-outline" size={32} color={operateur === 'om' ? "#fff" : "#9AA4BF"} />
+                    <Text style={[styles.operatorText, operateur === 'om' && styles.operatorTextSelected]}>Orange Money</Text>
+                  </TouchableOpacity>
+                </View>
+                
+                <TextInput
+                  style={styles.modalInput}
+                  placeholder="Votre numéro de téléphone"
+                  placeholderTextColor="#6B7280"
+                  keyboardType="phone-pad"
+                  value={telephone}
+                  onChangeText={setTelephone}
+                />
+                
+                <TouchableOpacity
+                  style={styles.modalPayButton}
+                  onPress={initierPaiement}
+                  disabled={paymentLoading}
+                >
+                  {paymentLoading ? (
+                    <ActivityIndicator color="#fff" />
+                  ) : (
+                    <>
+                      <Ionicons name="arrow-forward" size={20} color="#fff" />
+                      <Text style={styles.modalButtonText}>Continuer</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              </>
+            ) : (
+              <>
+                <View style={styles.infoCard}>
+                  <Text style={styles.infoTitle}>Instructions de paiement</Text>
+                  <Text style={styles.infoText}>
+                    {operateur === 'wave' 
+                      ? `1. Ouvrez l'application Wave\n2. Envoyez ${transaction?.montant?.toLocaleString()} FCFA au numéro :\n   ${transaction?.telephone_destinataire}\n3. Saisissez le code ci-dessous`
+                      : `1. Ouvrez l'application Orange Money\n2. Envoyez ${transaction?.montant?.toLocaleString()} FCFA au numéro :\n   ${transaction?.telephone_destinataire}\n3. Saisissez le code ci-dessous`}
+                  </Text>
+                  <Text style={styles.referenceText}>
+                    Référence : {transaction?.reference}
+                  </Text>
+                  <Text style={styles.referenceText}>
+                    Code : {transaction?.code_confirmation}
+                  </Text>
+                </View>
+                
+                <TextInput
+                  style={styles.modalInput}
+                  placeholder="Code de confirmation (6 chiffres)"
+                  placeholderTextColor="#6B7280"
+                  keyboardType="number-pad"
+                  maxLength={6}
+                  value={codeConfirmation}
+                  onChangeText={setCodeConfirmation}
+                />
+                
+                <TouchableOpacity
+                  style={styles.modalConfirmButton}
+                  onPress={confirmerPaiement}
+                  disabled={paymentLoading}
+                >
+                  {paymentLoading ? (
+                    <ActivityIndicator color="#fff" />
+                  ) : (
+                    <>
+                      <Ionicons name="checkmark-circle" size={20} color="#fff" />
+                      <Text style={styles.modalButtonText}>Confirmer le paiement</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              </>
+            )}
+            
+            <Text style={styles.modalSecureText}>
+              🔒 Paiement sécurisé
+            </Text>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -409,6 +716,53 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "500",
   },
+  payNowButton: {
+    flexDirection: "row",
+    backgroundColor: "#2563EB",
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    marginTop: 12,
+  },
+  payNowText: {
+    color: "#fff",
+    fontSize: 14,
+    fontWeight: "bold",
+  },
+  courseTermineeBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#10B98120",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    marginBottom: 10,
+    gap: 6,
+  },
+  courseTermineeText: {
+    color: "#10B981",
+    fontSize: 12,
+    fontWeight: "500",
+  },
+  paidBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#10B98120",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    marginBottom: 10,
+    gap: 6,
+    alignSelf: "flex-start",
+  },
+  paidText: {
+    color: "#10B981",
+    fontSize: 12,
+    fontWeight: "500",
+  },
   rejectedMessage: {
     flexDirection: "row",
     alignItems: "center",
@@ -453,5 +807,141 @@ const styles = StyleSheet.create({
     fontSize: 14,
     textAlign: "center",
     marginTop: 8,
+  },
+  // Styles du modal de paiement
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  modalContainer: {
+    backgroundColor: "#1C2541",
+    borderRadius: 20,
+    padding: 24,
+    width: "90%",
+    maxHeight: "80%",
+  },
+  modalCloseBtn: {
+    position: "absolute",
+    top: 16,
+    right: 16,
+    zIndex: 10,
+  },
+  modalIconContainer: {
+    alignItems: "center",
+    marginBottom: 16,
+  },
+  modalTitle: {
+    color: "#fff",
+    fontSize: 20,
+    fontWeight: "bold",
+    textAlign: "center",
+    marginBottom: 8,
+  },
+  modalAmount: {
+    color: "#4DA3FF",
+    fontSize: 28,
+    fontWeight: "bold",
+    textAlign: "center",
+    marginBottom: 24,
+  },
+  modalLabel: {
+    color: "#9AA4BF",
+    fontSize: 14,
+    marginBottom: 12,
+  },
+  operatorContainer: {
+    flexDirection: "row",
+    gap: 12,
+    marginBottom: 20,
+  },
+  operatorBtn: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    backgroundColor: "#0B132B",
+    paddingVertical: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#2A3655",
+  },
+  operatorSelected: {
+    backgroundColor: "#10B981",
+    borderColor: "#10B981",
+  },
+  operatorText: {
+    color: "#9AA4BF",
+    fontSize: 14,
+    fontWeight: "500",
+  },
+  operatorTextSelected: {
+    color: "#fff",
+  },
+  modalInput: {
+    backgroundColor: "#0B132B",
+    borderRadius: 10,
+    padding: 14,
+    color: "#fff",
+    fontSize: 16,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: "#2A3655",
+  },
+  modalPayButton: {
+    flexDirection: "row",
+    backgroundColor: "#2563EB",
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    marginBottom: 12,
+  },
+  modalConfirmButton: {
+    flexDirection: "row",
+    backgroundColor: "#10B981",
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    marginBottom: 12,
+  },
+  modalButtonText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "bold",
+  },
+  modalSecureText: {
+    color: "#6B7280",
+    fontSize: 11,
+    textAlign: "center",
+    marginTop: 16,
+  },
+  infoCard: {
+    backgroundColor: "#0B132B",
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 20,
+  },
+  infoTitle: {
+    color: "#4DA3FF",
+    fontSize: 14,
+    fontWeight: "bold",
+    marginBottom: 8,
+  },
+  infoText: {
+    color: "#fff",
+    fontSize: 13,
+    lineHeight: 20,
+  },
+  referenceText: {
+    color: "#F59E0B",
+    fontSize: 12,
+    marginTop: 8,
+    fontFamily: "monospace",
   },
 });
