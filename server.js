@@ -7,6 +7,7 @@ const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
+const nodemailer = require("nodemailer"); 
 
 // ================= APP =================
 const app = express();
@@ -1744,21 +1745,64 @@ app.put("/api/driver/update-profile", authenticateDriver, (req, res) => {
   });
 });
 
+// ================= IMPORTS POUR EMAIL =================
+const nodemailer = require("nodemailer");
+
+// Configuration du transporteur email (UNE SEULE FOIS)
+let transporter;
+
+if (process.env.EMAIL_SERVICE === "gmail" && process.env.EMAIL_USER && process.env.EMAIL_PASS) {
+  transporter = nodemailer.createTransport({
+    service: "gmail",
+    auth: {
+      user: process.env.EMAIL_USER,
+      pass: process.env.EMAIL_PASS,
+    },
+  });
+  console.log("📧 Service email configuré (Gmail)");
+} else {
+  console.log("⚠️ Email non configuré - Mode développement");
+}
+
+// Fonction d'envoi d'email
+async function sendResetEmail(email, resetCode) {
+  if (!transporter) {
+    console.log("⚠️ Email non configuré, affichage du code dans la console");
+    return false;
+  }
+  
+  try {
+    await transporter.sendMail({
+      from: `"Let'sGo" <${process.env.EMAIL_USER}>`,
+      to: email,
+      subject: "🔐 Réinitialisation de votre mot de passe Let'sGo",
+      text: `Votre code de réinitialisation est: ${resetCode}\n\nCe code expirera dans 15 minutes.\n\nSi vous n'êtes pas à l'origine de cette demande, ignorez cet email.`,
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 500px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 10px;">
+          <h2 style="color: #4A90E2;">🔐 Let'sGo</h2>
+          <h3>Réinitialisation de votre mot de passe</h3>
+          <p>Vous avez demandé la réinitialisation de votre mot de passe.</p>
+          <div style="text-align: center; padding: 20px; background: #f5f5f5; border-radius: 8px; margin: 20px 0;">
+            <span style="font-size: 32px; font-weight: bold; letter-spacing: 5px;">${resetCode}</span>
+          </div>
+          <p>Ce code expirera dans <strong>15 minutes</strong>.</p>
+          <p>Si vous n'êtes pas à l'origine de cette demande, ignorez cet email.</p>
+          <hr style="margin: 20px 0; border: none; border-top: 1px solid #e0e0e0;">
+          <p style="color: #999; font-size: 12px;">L'équipe Let'sGo</p>
+        </div>
+      `,
+    });
+    console.log(`✅ Email envoyé à ${email}`);
+    return true;
+  } catch (error) {
+    console.error("❌ Erreur envoi email:", error);
+    return false;
+  }
+}
+
 // =======================================================
 // ============= ROUTES PASSWORD RESET ===================
 // =======================================================
-
-// Configuration pour l'envoi d'emails (avec nodemailer)
-const nodemailer = require("nodemailer");
-
-// Configuration du transporteur email (à adapter avec vos paramètres)
-const transporter = nodemailer.createTransport({
-  service: "gmail", // ou autre service
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
-  },
-});
 
 // ── 1. Demande de réinitialisation (envoi du code) ──
 app.post("/api/auth/forgot-password", async (req, res) => {
@@ -1793,33 +1837,37 @@ app.post("/api/auth/forgot-password", async (req, res) => {
       const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
       
       // Supprimer les anciens tokens pour cet email
-      db.query(
-        "DELETE FROM password_resets WHERE email = ?",
-        [email],
-        (err) => {
-          if (err) console.error("Erreur suppression anciens tokens:", err);
-        }
-      );
+      db.query("DELETE FROM password_resets WHERE email = ?", [email]);
       
       // Sauvegarder le nouveau token
       db.query(
         "INSERT INTO password_resets (email, token, expires_at) VALUES (?, ?, ?)",
         [email, resetCode, expiresAt],
-        (err) => {
+        async (err) => {
           if (err) {
             console.error("❌ Erreur sauvegarde token:", err);
             return res.status(500).json({ message: "Erreur serveur" });
           }
           
-          // Envoyer l'email (optionnel, sinon retourner le code)
-          // Pour le développement, on retourne le code directement
+          // Afficher le code dans la console (pour déboguer)
           console.log(`📧 Code de réinitialisation pour ${email}: ${resetCode}`);
           
-          res.json({ 
-            success: true, 
-            message: "Code de réinitialisation envoyé",
-            resetCode: process.env.NODE_ENV === "development" ? resetCode : undefined
-          });
+          // Essayer d'envoyer l'email
+          const emailSent = await sendResetEmail(email, resetCode);
+          
+          if (emailSent) {
+            res.json({ 
+              success: true, 
+              message: "Un code de réinitialisation a été envoyé à votre adresse email." 
+            });
+          } else {
+            // Fallback: retourner le code pour le développement
+            res.json({ 
+              success: true, 
+              message: "Code de réinitialisation généré (vérifiez votre console ou votre email)",
+              resetCode: process.env.NODE_ENV === "development" ? resetCode : undefined
+            });
+          }
         }
       );
     }
