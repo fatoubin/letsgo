@@ -25,6 +25,17 @@ const limiter = rateLimit({
 
 app.use(limiter);
 
+// ================= HELPER NOTIFICATIONS =================
+function createNotification(userId, titre, message, type = "info") {
+  db.query(
+    "INSERT INTO notifications (user_id, titre, message, type) VALUES (?, ?, ?, ?)",
+    [userId, titre, message, type],
+    (err) => {
+      if (err) console.error("❌ Erreur création notification:", err);
+      else console.log(`🔔 Notification envoyée à user ${userId}: ${titre}`);
+    }
+  );
+}
 // ================= CONNEXION MYSQL =================
 const db = mysql.createPool({
   host: process.env.DB_HOST,
@@ -269,6 +280,8 @@ app.get("/api/client/mes-reservations", authenticate, (req, res) => {
       t.depart,
       t.destination,
       t.heure,
+      t.status as trajet_status,
+      t.completed_at,
       u.id as chauffeur_id,
       u.nom as chauffeur_nom,
       u.prenom as chauffeur_prenom,
@@ -278,7 +291,9 @@ app.get("/api/client/mes-reservations", authenticate, (req, res) => {
       d.seats as vehicle_seats,
       d.latitude as chauffeur_lat,
       d.longitude as chauffeur_lng,
-      d.is_online
+      d.is_online,
+      CASE WHEN t.status = 'completed' THEN TRUE ELSE FALSE END as course_terminee,
+      FALSE as paiement_effectue
     FROM reservations r
     JOIN trajets t ON r.trip_id = t.id
     JOIN users u ON t.user_id = u.id
@@ -293,10 +308,10 @@ app.get("/api/client/mes-reservations", authenticate, (req, res) => {
       return res.status(500).json({ message: "Erreur serveur", detail: err.message });
     }
     console.log(`✅ ${results.length} réservations trouvées`);
+    console.log("📊 Première réservation:", results[0]); // Pour debug
     res.json(results);
   });
 });
-
 // ── Réserver un trajet existant ──
 app.post("/api/client/reserver", authenticate, (req, res) => {
   const { trip_id, places } = req.body;
