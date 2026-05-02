@@ -7,6 +7,7 @@ const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
+const nodemailer = require("nodemailer"); 
 
 // ================= APP =================
 const app = express();
@@ -1082,6 +1083,30 @@ app.get("/api/driver/revenue/all", authenticateDriver, (req, res) => {
   });
 });
 
+// ── Revenus totaux du chauffeur
+app.get("/api/driver/TotalRevenue", authenticateDriver, (req, res) => {
+  const { driver_id } = req.query;
+  
+  if (!driver_id) {
+    return res.status(400).json({ message: "driver_id requis" });
+  }
+
+  const sql = `
+    SELECT COALESCE(SUM(prix), 0) AS TotalRevenue 
+    FROM trajets 
+    WHERE user_id = (SELECT user_id FROM drivers WHERE id = ?) 
+    AND status = 'completed'
+  `;
+  
+  db.query(sql, [driver_id], (err, results) => {
+    if (err) {
+      console.error("❌ Erreur revenus:", err);
+      return res.status(500).json({ message: "Erreur serveur" });
+    }
+    res.json({ TotalRevenue: results[0]?.TotalRevenue || 0 });
+  });
+});
+
 // ── Mise à jour position chauffeur ──
 // Note: vous devez avoir les colonnes lat et lng dans la table drivers pour que cette route soit complète.
 // Actuellement elle ne met à jour que is_online = true.
@@ -1554,7 +1579,7 @@ app.get("/api/driver/mes-offres", authenticateDriver, (req, res) => {
 
 // ── Modifier un trajet ──
 app.post("/api/trips/update", authenticateDriver, (req, res) => {
-  const { trip_id, departure, destination, heure, seats } = req.body;
+  const { trip_id, departure, destination, heure, seats, prix } = req.body;
   if (!trip_id) return res.status(400).json({ message: "trip_id requis" });
 
   db.query(
@@ -1562,7 +1587,8 @@ app.post("/api/trips/update", authenticateDriver, (req, res) => {
       depart = COALESCE(?, depart),
       destination = COALESCE(?, destination),
       heure = COALESCE(?, heure),
-      places = COALESCE(?, places)
+      places = COALESCE(?, places),
+      prix = COALESCE(?, prix)
      WHERE id = ?`,
     [departure, destination, heure, seats, trip_id],
     (err, result) => {
@@ -1683,6 +1709,272 @@ app.get("/traffic/heatmap", async (req, res) => {
   `);
 
   res.json(data);
+});
+
+// ── Mettre à jour le profil chauffeur ──
+app.put("/api/driver/update-profile", authenticateDriver, (req, res) => {
+  const { driver_id, nom, prenom, telephone, residence, vehicle_type, vehicle_plate, seats, license_number } = req.body;
+
+  console.log("📥 [update-profile] Requête reçue:", { driver_id, nom, prenom, telephone, residence, vehicle_type, vehicle_plate, seats, license_number });
+
+  if (!driver_id) {
+    return res.status(400).json({ message: "driver_id requis" });
+  }
+
+  // 1. Mettre à jour la table users
+  const updateUserSql = `
+    UPDATE users u
+    JOIN drivers d ON d.user_id = u.id
+    SET u.nom = ?, u.prenom = ?, u.telephone = ?, u.residence = ?
+    WHERE d.id = ?
+  `;
+
+  db.query(updateUserSql, [nom, prenom, telephone, residence || null, driver_id], (err, result) => {
+    if (err) {
+      console.error("❌ Erreur mise à jour user:", err);
+      return res.status(500).json({ message: "Erreur mise à jour profil", error: err.message });
+    }
+
+    console.log("✅ Utilisateur mis à jour");
+
+    // 2. Mettre à jour la table drivers
+    const updateDriverSql = `
+      UPDATE drivers
+      SET vehicle_type = ?, vehicle_plate = ?, seats = ?, license_number = ?
+      WHERE id = ?
+    `;
+
+    db.query(updateDriverSql, [vehicle_type, vehicle_plate, seats, license_number || null, driver_id], (err2, result2) => {
+      if (err2) {
+        console.error("❌ Erreur mise à jour driver:", err2);
+        return res.status(500).json({ message: "Erreur mise à jour véhicule", error: err2.message });
+      }
+
+      console.log("✅ Chauffeur mis à jour");
+      res.json({ 
+        success: true, 
+        message: "Profil mis à jour avec succès",
+        affectedRows: result.affectedRows + result2.affectedRows
+      });
+    });
+  });
+});
+
+// ================= IMPORTS POUR EMAIL =================
+const nodemailer = require("nodemailer");
+
+// Configuration du transporteur email (UNE SEULE FOIS)
+let transporter;
+
+if (process.env.EMAIL_SERVICE === "gmail" && process.env.EMAIL_USER && process.env.EMAIL_PASS) {
+  transporter = nodemailer.createTransport({
+    service: "gmail",
+    auth: {
+      user: process.env.EMAIL_USER,
+      pass: process.env.EMAIL_PASS,
+    },
+  });
+  console.log("📧 Service email configuré (Gmail)");
+} else {
+  console.log("⚠️ Email non configuré - Mode développement");
+}
+
+// Fonction d'envoi d'email
+async function sendResetEmail(email, resetCode) {
+  if (!transporter) {
+    console.log("⚠️ Email non configuré, affichage du code dans la console");
+    return false;
+  }
+  
+  try {
+    await transporter.sendMail({
+      from: `"Let'sGo" <${process.env.EMAIL_USER}>`,
+      to: email,
+      subject: "🔐 Réinitialisation de votre mot de passe Let'sGo",
+      text: `Votre code de réinitialisation est: ${resetCode}\n\nCe code expirera dans 15 minutes.\n\nSi vous n'êtes pas à l'origine de cette demande, ignorez cet email.`,
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 500px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 10px;">
+          <h2 style="color: #4A90E2;">🔐 Let'sGo</h2>
+          <h3>Réinitialisation de votre mot de passe</h3>
+          <p>Vous avez demandé la réinitialisation de votre mot de passe.</p>
+          <div style="text-align: center; padding: 20px; background: #f5f5f5; border-radius: 8px; margin: 20px 0;">
+            <span style="font-size: 32px; font-weight: bold; letter-spacing: 5px;">${resetCode}</span>
+          </div>
+          <p>Ce code expirera dans <strong>15 minutes</strong>.</p>
+          <p>Si vous n'êtes pas à l'origine de cette demande, ignorez cet email.</p>
+          <hr style="margin: 20px 0; border: none; border-top: 1px solid #e0e0e0;">
+          <p style="color: #999; font-size: 12px;">L'équipe Let'sGo</p>
+        </div>
+      `,
+    });
+    console.log(`✅ Email envoyé à ${email}`);
+    return true;
+  } catch (error) {
+    console.error("❌ Erreur envoi email:", error);
+    return false;
+  }
+}
+
+// =======================================================
+// ============= ROUTES PASSWORD RESET ===================
+// =======================================================
+
+// ── 1. Demande de réinitialisation (envoi du code) ──
+app.post("/api/auth/forgot-password", async (req, res) => {
+  const { email } = req.body;
+  
+  if (!email) {
+    return res.status(400).json({ message: "Email requis" });
+  }
+
+  // Vérifier si l'utilisateur existe
+  db.query(
+    "SELECT id, email, nom, prenom FROM users WHERE email = ?",
+    [email],
+    async (err, results) => {
+      if (err) {
+        console.error("❌ Erreur DB:", err);
+        return res.status(500).json({ message: "Erreur serveur" });
+      }
+      
+      if (results.length === 0) {
+        // Pour des raisons de sécurité, on ne révèle pas si l'email existe
+        return res.json({ 
+          success: true, 
+          message: "Si cet email existe, un code de réinitialisation a été envoyé." 
+        });
+      }
+
+      const user = results[0];
+      
+      // Générer un code à 6 chiffres
+      const resetCode = Math.floor(100000 + Math.random() * 900000).toString();
+      const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
+      
+      // Supprimer les anciens tokens pour cet email
+      db.query("DELETE FROM password_resets WHERE email = ?", [email]);
+      
+      // Sauvegarder le nouveau token
+      db.query(
+        "INSERT INTO password_resets (email, token, expires_at) VALUES (?, ?, ?)",
+        [email, resetCode, expiresAt],
+        async (err) => {
+          if (err) {
+            console.error("❌ Erreur sauvegarde token:", err);
+            return res.status(500).json({ message: "Erreur serveur" });
+          }
+          
+          // Afficher le code dans la console (pour déboguer)
+          console.log(`📧 Code de réinitialisation pour ${email}: ${resetCode}`);
+          
+          // Essayer d'envoyer l'email
+          const emailSent = await sendResetEmail(email, resetCode);
+          
+          if (emailSent) {
+            res.json({ 
+              success: true, 
+              message: "Un code de réinitialisation a été envoyé à votre adresse email." 
+            });
+          } else {
+            // Fallback: retourner le code pour le développement
+            res.json({ 
+              success: true, 
+              message: "Code de réinitialisation généré (vérifiez votre console ou votre email)",
+              resetCode: process.env.NODE_ENV === "development" ? resetCode : undefined
+            });
+          }
+        }
+      );
+    }
+  );
+});
+
+// ── 2. Vérifier le code de réinitialisation ──
+app.post("/api/auth/verify-reset-code", (req, res) => {
+  const { email, code } = req.body;
+  
+  if (!email || !code) {
+    return res.status(400).json({ message: "Email et code requis" });
+  }
+  
+  db.query(
+    "SELECT * FROM password_resets WHERE email = ? AND token = ? AND used = FALSE AND expires_at > NOW()",
+    [email, code],
+    (err, results) => {
+      if (err) {
+        console.error("❌ Erreur DB:", err);
+        return res.status(500).json({ message: "Erreur serveur" });
+      }
+      
+      if (results.length === 0) {
+        return res.status(400).json({ message: "Code invalide ou expiré" });
+      }
+      
+      res.json({ 
+        success: true, 
+        message: "Code valide",
+        resetId: results[0].id
+      });
+    }
+  );
+});
+
+// ── 3. Réinitialiser le mot de passe ──
+app.post("/api/auth/reset-password", async (req, res) => {
+  const { email, code, newPassword } = req.body;
+  
+  if (!email || !code || !newPassword) {
+    return res.status(400).json({ message: "Tous les champs sont requis" });
+  }
+  
+  if (newPassword.length < 6) {
+    return res.status(400).json({ message: "Le mot de passe doit contenir au moins 6 caractères" });
+  }
+  
+  // Vérifier le code
+  db.query(
+    "SELECT * FROM password_resets WHERE email = ? AND token = ? AND used = FALSE AND expires_at > NOW()",
+    [email, code],
+    async (err, results) => {
+      if (err) {
+        console.error("❌ Erreur DB:", err);
+        return res.status(500).json({ message: "Erreur serveur" });
+      }
+      
+      if (results.length === 0) {
+        return res.status(400).json({ message: "Code invalide ou expiré" });
+      }
+      
+      const resetId = results[0].id;
+      const hashedPassword = await bcrypt.hash(newPassword, 10);
+      
+      // Mettre à jour le mot de passe
+      db.query(
+        "UPDATE users SET password = ? WHERE email = ?",
+        [hashedPassword, email],
+        (err) => {
+          if (err) {
+            console.error("❌ Erreur mise à jour mot de passe:", err);
+            return res.status(500).json({ message: "Erreur serveur" });
+          }
+          
+          // Marquer le code comme utilisé
+          db.query(
+            "UPDATE password_resets SET used = TRUE WHERE id = ?",
+            [resetId],
+            (err) => {
+              if (err) console.error("Erreur mise à jour token:", err);
+            }
+          );
+          
+          res.json({ 
+            success: true, 
+            message: "Mot de passe réinitialisé avec succès" 
+          });
+        }
+      );
+    }
+  );
 });
 
 // ================= TRANSPORT URBAIN =================

@@ -289,7 +289,7 @@ export default function DriverLoginScreen() {
 
         {/* Mot de passe oublié + Se souvenir de moi */}
         <View style={styles.optionsRow}>
-          <TouchableOpacity onPress={() => router.push("/forgot-password")}>
+          <TouchableOpacity onPress={() => router.push("/ForgotPassword")}>
             <Text style={styles.forgot}>Mot de passe oublié ?</Text>
           </TouchableOpacity>
           

@@ -35,7 +35,133 @@ interface RouteInfo {
 const geocodingCache: { [key: string]: Coordinates } = {};
 const routesCache: { [key: string]: Coordinates[] } = {};
 
-// Coordonnées des villes sénégalaises (fallback)
+// ========== 🔥 NOUVEAU : GÉOCODAGE GRATUIT (BASE LOCALE ÉTENDUE) ==========
+// 🆓 GRATUIT - Sans appel API, fonctionne même hors ligne
+const FREE_GEOCODING_CITIES: { [key: string]: Coordinates } = {
+  // Région de Dakar
+  "dakar": { latitude: 14.6937, longitude: -17.4441 },
+  "dakar plateau": { latitude: 14.6656, longitude: -17.4463 },
+  "almadies": { latitude: 14.7458, longitude: -17.5336 },
+  "ouakam": { latitude: 14.7248, longitude: -17.4905 },
+  "nok": { latitude: 14.7248, longitude: -17.4905 },
+  "yarakh": { latitude: 14.7269, longitude: -17.4574 },
+  "fann": { latitude: 14.6828, longitude: -17.4670 },
+  "guediawaye": { latitude: 14.7768, longitude: -17.3940 },
+  "pikine": { latitude: 14.7545, longitude: -17.3997 },
+  "rufisque": { latitude: 14.7165, longitude: -17.2717 },
+  "bargny": { latitude: 14.6998, longitude: -17.2412 },
+  "sangalkam": { latitude: 14.7558, longitude: -17.3214 },
+  "yeumbeul": { latitude: 14.7598, longitude: -17.4163 },
+  "cambèrène": { latitude: 14.7515, longitude: -17.4594 },
+  "parcelles assainies": { latitude: 14.7302, longitude: -17.4564 },
+  "grand yoff": { latitude: 14.7682, longitude: -17.4328 },
+  "keur massar": { latitude: 14.7768, longitude: -17.3218 },
+  "malika": { latitude: 14.8080, longitude: -17.3029 },
+  "niaga": { latitude: 14.7383, longitude: -17.2182 },
+  
+  // Région de Thiès
+  "thies": { latitude: 14.7910, longitude: -16.9259 },
+  "thiès": { latitude: 14.7910, longitude: -16.9259 },
+  "thiès centre": { latitude: 14.7910, longitude: -16.9259 },
+  "mbour": { latitude: 14.4056, longitude: -16.9647 },
+  "saly": { latitude: 14.4238, longitude: -17.0190 },
+  "saly portugal": { latitude: 14.4238, longitude: -17.0190 },
+  "tivaouane": { latitude: 15.1000, longitude: -16.8000 },
+  "joal": { latitude: 14.1700, longitude: -16.8600 },
+  "fadiouth": { latitude: 14.1523, longitude: -16.8260 },
+  "popenguine": { latitude: 14.3543, longitude: -17.1050 },
+  "somone": { latitude: 14.4667, longitude: -17.0333 },
+  "ngaparou": { latitude: 14.4500, longitude: -17.0333 },
+  "kayar": { latitude: 15.0500, longitude: -17.0000 },
+  
+  // Région de Touba
+  "touba": { latitude: 14.8575, longitude: -15.8766 },
+  "diourbel": { latitude: 14.6479, longitude: -16.2438 },
+  "bambey": { latitude: 14.7000, longitude: -16.4667 },
+  
+  // Région de Saint-Louis
+  "saint louis": { latitude: 16.0283, longitude: -16.5000 },
+  "saint-louis": { latitude: 16.0283, longitude: -16.5000 },
+  "dagana": { latitude: 16.5167, longitude: -15.5167 },
+  "podor": { latitude: 16.6667, longitude: -14.9667 },
+  "richard toll": { latitude: 16.4670, longitude: -15.8330 },
+  
+  // Région de Kaolack
+  "kaolack": { latitude: 14.1522, longitude: -16.0727 },
+  "nganda": { latitude: 14.2423, longitude: -16.2734 },
+  "nioro": { latitude: 13.7667, longitude: -15.8000 },
+  "kahone": { latitude: 14.1523, longitude: -16.0728 },
+  
+  // Région de Ziguinchor
+  "ziguinchor": { latitude: 12.5708, longitude: -16.2694 },
+  "bignona": { latitude: 12.8092, longitude: -16.2264 },
+  "oudine": { latitude: 12.6667, longitude: -16.2000 },
+  "diembering": { latitude: 12.6420, longitude: -16.2864 },
+  "cap skirring": { latitude: 12.4167, longitude: -16.7167 },
+  
+  // Région de Louga
+  "louga": { latitude: 15.6187, longitude: -16.2287 },
+  "luguere": { latitude: 16.1667, longitude: -15.4000 },
+  "lampoul": { latitude: 15.8000, longitude: -15.8500 },
+  
+  // Région de Tambacounda
+  "tambacounda": { latitude: 13.7716, longitude: -13.6673 },
+  "koussanar": { latitude: 14.0000, longitude: -14.0000 },
+  "goudiry": { latitude: 14.1833, longitude: -13.1833 },
+  
+  // Région de Kolda
+  "kolda": { latitude: 12.8943, longitude: -14.9444 },
+  "ve lingara": { latitude: 13.0000, longitude: -14.8667 },
+  "dabo": { latitude: 13.0000, longitude: -14.8000 },
+  
+  // Région de Matam
+  "matam": { latitude: 15.6585, longitude: -13.2500 },
+  "kanel": { latitude: 15.4917, longitude: -13.3333 },
+  "ourossogui": { latitude: 15.6000, longitude: -13.3167 },
+  
+  // Région de Kédougou
+  "kedougou": { latitude: 12.5520, longitude: -12.1807 },
+  "Saraya": { latitude: 12.830777, longitude: -11.739860 },
+  "salemata": { latitude: 12.6333, longitude: -12.3333 },
+  
+  // Région de Sédhiou
+  "sedhiou": { latitude: 12.7078, longitude: -15.5569 },
+  "marsassoum": { latitude: 12.8333, longitude: -15.8167 },
+  
+  // Région de Fatick
+  "fatick": { latitude: 14.3345, longitude: -16.4161 },
+  "foundiougne": { latitude: 14.1333, longitude: -16.4667 },
+  "passy": { latitude: 14.3667, longitude: -16.3167 },
+  "sokone": { latitude: 13.8833, longitude: -16.3667 },
+  
+  // Région de Kaffrine
+  "kaffrine": { latitude: 14.1058, longitude: -15.5500 },
+  "mabo": { latitude: 14.0000, longitude: -15.5000 },
+  "bir el lit": { latitude: 14.2000, longitude: -15.2000 },
+};
+
+// Fonction de géocodage gratuit (sans API)
+const freeGeocode = (destinationName: string): Coordinates | null => {
+  const normalized = destinationName.toLowerCase().trim();
+  
+  // Recherche exacte
+  if (FREE_GEOCODING_CITIES[normalized]) {
+    console.log(`✅ [Gratuit] Destination trouvée: ${destinationName}`);
+    return FREE_GEOCODING_CITIES[normalized];
+  }
+  
+  // Recherche partielle
+  for (const [city, coords] of Object.entries(FREE_GEOCODING_CITIES)) {
+    if (normalized.includes(city) || city.includes(normalized)) {
+      console.log(`✅ [Gratuit] Destination trouvée par correspondance: ${city}`);
+      return coords;
+    }
+  }
+  
+  return null;
+};
+
+// Coordonnées des villes sénégalaises (fallback) - GARDÉ POUR COMPATIBILITÉ
 const SENEGAL_CITIES: { [key: string]: Coordinates } = {
   dakar: { latitude: 14.6937, longitude: -17.4441 },
   thies: { latitude: 14.7910, longitude: -16.9259 },
@@ -124,7 +250,7 @@ export default function DriverTripMapScreen() {
     getInitialLocation();
   }, []);
 
-  // 🗺️ Géocoder la destination
+  // 🗺️ Géocoder la destination (MODIFIÉ: Ajout du géocodage gratuit en priorité)
   useEffect(() => {
     if (!trip?.destination) {
       console.log("⚠️ Pas de destination dans le trip");
@@ -145,7 +271,18 @@ export default function DriverTripMapScreen() {
           return;
         }
 
-        // Chercher dans les villes sénégalaises
+        // 🔥 NOUVEAU : GÉOCODAGE GRATUIT EN PRIORITÉ
+        const freeCoords = freeGeocode(trip.destination);
+        if (freeCoords) {
+          console.log("✅ [Gratuit] Géocodage réussi pour:", trip.destination);
+          geocodingCache[destName] = freeCoords;
+          setEndPoint(freeCoords);
+          setGeocodingStatus("");
+          setLoading(false);
+          return;
+        }
+
+        // Chercher dans les villes sénégalaises (fallback existant)
         let found = false;
         for (const [city, coords] of Object.entries(SENEGAL_CITIES)) {
           if (destName.includes(city) || city.includes(destName)) {
@@ -160,7 +297,7 @@ export default function DriverTripMapScreen() {
         }
 
         if (!found && GOOGLE_MAPS_KEY) {
-          // Tentative avec Google Maps API
+          // Tentative avec Google Maps API (votre code existant)
           setGeocodingStatus(`Recherche sur Google Maps...`);
           let searchName = trip.destination;
           if (searchName.toLowerCase() === "thies") searchName = "Thiès";
