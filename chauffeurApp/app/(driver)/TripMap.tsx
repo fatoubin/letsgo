@@ -18,7 +18,7 @@ import { Magnetometer } from "expo-sensors";
 import { API_URL } from "../../src/services/api";
 import { COLORS } from "../../src/styles/colors";
 
-const MAPBOX_TOKEN = process.env.EXPO_PUBLIC_MAPBOX_TOKEN ?? "";
+const GOOGLE_MAPS_KEY = process.env.EXPO_PUBLIC_GOOGLE_MAPS_KEY ?? "";
 const { width } = Dimensions.get("window");
 
 interface Coordinates {
@@ -26,7 +26,153 @@ interface Coordinates {
   longitude: number;
 }
 
+interface RouteInfo {
+  duration: string;
+  distance: string;
+  steps: any[];
+}
+
+const geocodingCache: { [key: string]: Coordinates } = {};
 const routesCache: { [key: string]: Coordinates[] } = {};
+
+// ========== 🔥 NOUVEAU : GÉOCODAGE GRATUIT (BASE LOCALE ÉTENDUE) ==========
+// 🆓 GRATUIT - Sans appel API, fonctionne même hors ligne
+const FREE_GEOCODING_CITIES: { [key: string]: Coordinates } = {
+  // Région de Dakar
+  "dakar": { latitude: 14.6937, longitude: -17.4441 },
+  "dakar plateau": { latitude: 14.6656, longitude: -17.4463 },
+  "almadies": { latitude: 14.7458, longitude: -17.5336 },
+  "ouakam": { latitude: 14.7248, longitude: -17.4905 },
+  "nok": { latitude: 14.7248, longitude: -17.4905 },
+  "yarakh": { latitude: 14.7269, longitude: -17.4574 },
+  "fann": { latitude: 14.6828, longitude: -17.4670 },
+  "guediawaye": { latitude: 14.7768, longitude: -17.3940 },
+  "pikine": { latitude: 14.7545, longitude: -17.3997 },
+  "rufisque": { latitude: 14.7165, longitude: -17.2717 },
+  "bargny": { latitude: 14.6998, longitude: -17.2412 },
+  "sangalkam": { latitude: 14.7558, longitude: -17.3214 },
+  "yeumbeul": { latitude: 14.7598, longitude: -17.4163 },
+  "cambèrène": { latitude: 14.7515, longitude: -17.4594 },
+  "parcelles assainies": { latitude: 14.7302, longitude: -17.4564 },
+  "grand yoff": { latitude: 14.7682, longitude: -17.4328 },
+  "keur massar": { latitude: 14.7768, longitude: -17.3218 },
+  "malika": { latitude: 14.8080, longitude: -17.3029 },
+  "niaga": { latitude: 14.7383, longitude: -17.2182 },
+  
+  // Région de Thiès
+  "thies": { latitude: 14.7910, longitude: -16.9259 },
+  "thiès": { latitude: 14.7910, longitude: -16.9259 },
+  "thiès centre": { latitude: 14.7910, longitude: -16.9259 },
+  "mbour": { latitude: 14.4056, longitude: -16.9647 },
+  "saly": { latitude: 14.4238, longitude: -17.0190 },
+  "saly portugal": { latitude: 14.4238, longitude: -17.0190 },
+  "tivaouane": { latitude: 15.1000, longitude: -16.8000 },
+  "joal": { latitude: 14.1700, longitude: -16.8600 },
+  "fadiouth": { latitude: 14.1523, longitude: -16.8260 },
+  "popenguine": { latitude: 14.3543, longitude: -17.1050 },
+  "somone": { latitude: 14.4667, longitude: -17.0333 },
+  "ngaparou": { latitude: 14.4500, longitude: -17.0333 },
+  "kayar": { latitude: 15.0500, longitude: -17.0000 },
+  
+  // Région de Touba
+  "touba": { latitude: 14.8575, longitude: -15.8766 },
+  "diourbel": { latitude: 14.6479, longitude: -16.2438 },
+  "bambey": { latitude: 14.7000, longitude: -16.4667 },
+  
+  // Région de Saint-Louis
+  "saint louis": { latitude: 16.0283, longitude: -16.5000 },
+  "saint-louis": { latitude: 16.0283, longitude: -16.5000 },
+  "dagana": { latitude: 16.5167, longitude: -15.5167 },
+  "podor": { latitude: 16.6667, longitude: -14.9667 },
+  "richard toll": { latitude: 16.4670, longitude: -15.8330 },
+  
+  // Région de Kaolack
+  "kaolack": { latitude: 14.1522, longitude: -16.0727 },
+  "nganda": { latitude: 14.2423, longitude: -16.2734 },
+  "nioro": { latitude: 13.7667, longitude: -15.8000 },
+  "kahone": { latitude: 14.1523, longitude: -16.0728 },
+  
+  // Région de Ziguinchor
+  "ziguinchor": { latitude: 12.5708, longitude: -16.2694 },
+  "bignona": { latitude: 12.8092, longitude: -16.2264 },
+  "oudine": { latitude: 12.6667, longitude: -16.2000 },
+  "diembering": { latitude: 12.6420, longitude: -16.2864 },
+  "cap skirring": { latitude: 12.4167, longitude: -16.7167 },
+  
+  // Région de Louga
+  "louga": { latitude: 15.6187, longitude: -16.2287 },
+  "luguere": { latitude: 16.1667, longitude: -15.4000 },
+  "lampoul": { latitude: 15.8000, longitude: -15.8500 },
+  
+  // Région de Tambacounda
+  "tambacounda": { latitude: 13.7716, longitude: -13.6673 },
+  "koussanar": { latitude: 14.0000, longitude: -14.0000 },
+  "goudiry": { latitude: 14.1833, longitude: -13.1833 },
+  
+  // Région de Kolda
+  "kolda": { latitude: 12.8943, longitude: -14.9444 },
+  "ve lingara": { latitude: 13.0000, longitude: -14.8667 },
+  "dabo": { latitude: 13.0000, longitude: -14.8000 },
+  
+  // Région de Matam
+  "matam": { latitude: 15.6585, longitude: -13.2500 },
+  "kanel": { latitude: 15.4917, longitude: -13.3333 },
+  "ourossogui": { latitude: 15.6000, longitude: -13.3167 },
+  
+  // Région de Kédougou
+  "kedougou": { latitude: 12.5520, longitude: -12.1807 },
+  "Saraya": { latitude: 12.830777, longitude: -11.739860 },
+  "salemata": { latitude: 12.6333, longitude: -12.3333 },
+  
+  // Région de Sédhiou
+  "sedhiou": { latitude: 12.7078, longitude: -15.5569 },
+  "marsassoum": { latitude: 12.8333, longitude: -15.8167 },
+  
+  // Région de Fatick
+  "fatick": { latitude: 14.3345, longitude: -16.4161 },
+  "foundiougne": { latitude: 14.1333, longitude: -16.4667 },
+  "passy": { latitude: 14.3667, longitude: -16.3167 },
+  "sokone": { latitude: 13.8833, longitude: -16.3667 },
+  
+  // Région de Kaffrine
+  "kaffrine": { latitude: 14.1058, longitude: -15.5500 },
+  "mabo": { latitude: 14.0000, longitude: -15.5000 },
+  "bir el lit": { latitude: 14.2000, longitude: -15.2000 },
+};
+
+// Fonction de géocodage gratuit (sans API)
+const freeGeocode = (destinationName: string): Coordinates | null => {
+  const normalized = destinationName.toLowerCase().trim();
+  
+  // Recherche exacte
+  if (FREE_GEOCODING_CITIES[normalized]) {
+    console.log(`✅ [Gratuit] Destination trouvée: ${destinationName}`);
+    return FREE_GEOCODING_CITIES[normalized];
+  }
+  
+  // Recherche partielle
+  for (const [city, coords] of Object.entries(FREE_GEOCODING_CITIES)) {
+    if (normalized.includes(city) || city.includes(normalized)) {
+      console.log(`✅ [Gratuit] Destination trouvée par correspondance: ${city}`);
+      return coords;
+    }
+  }
+  
+  return null;
+};
+
+// Coordonnées des villes sénégalaises (fallback) - GARDÉ POUR COMPATIBILITÉ
+const SENEGAL_CITIES: { [key: string]: Coordinates } = {
+  dakar: { latitude: 14.6937, longitude: -17.4441 },
+  thies: { latitude: 14.7910, longitude: -16.9259 },
+  thiès: { latitude: 14.7910, longitude: -16.9259 },
+  touba: { latitude: 14.8575, longitude: -15.8766 },
+  mbour: { latitude: 14.4056, longitude: -16.9647 },
+  "saint louis": { latitude: 16.0283, longitude: -16.5000 },
+  kaolack: { latitude: 14.1522, longitude: -16.0727 },
+  ziguinchor: { latitude: 12.5708, longitude: -16.2694 },
+  diourbel: { latitude: 14.6479, longitude: -16.2438 },
+};
 
 export default function DriverTripMapScreen() {
   const router = useRouter();
@@ -34,20 +180,26 @@ export default function DriverTripMapScreen() {
   const trip = params.trip ? JSON.parse(String(params.trip)) : null;
 
   const mapRef = useRef<MapView | null>(null);
-  const watchRef = useRef<any>(null);
+  const watchPositionRef = useRef<Location.LocationSubscription | null>(null);
+  const lastLocationSentRef = useRef<number>(0);
   const isFetchingRef = useRef(false);
   const lastFetchTimeRef = useRef(0);
+  const navigationStartedRef = useRef(false);
 
+  const [driverId, setDriverId] = useState<number | null>(null);
   const [driverLocation, setDriverLocation] = useState<Coordinates | null>(null);
   const [endPoint, setEndPoint] = useState<Coordinates | null>(null);
   const [routeCoords, setRouteCoords] = useState<Coordinates[]>([]);
+  const [routeInfo, setRouteInfo] = useState<RouteInfo | null>(null);
+  const [loading, setLoading] = useState(true);
   const [navigationActive, setNavigationActive] = useState(false);
   const [eta, setEta] = useState("");
-  const [distance, setDistance] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [heading, setHeading] = useState(0);
+  const [remainingDistance, setRemainingDistance] = useState(0);
+  const [tripCompleted, setTripCompleted] = useState(false);
+  const [geocodingStatus, setGeocodingStatus] = useState("");
 
   // 🧭 Boussole
+  const [heading, setHeading] = useState(0);
   useEffect(() => {
     const sub = Magnetometer.addListener(data => {
       const angle = Math.atan2(data.y, data.x) * (180 / Math.PI);
@@ -56,225 +208,620 @@ export default function DriverTripMapScreen() {
     return () => sub.remove();
   }, []);
 
-  // 📍 GPS initial
+  // 📍 Récupérer driverId
   useEffect(() => {
-    (async () => {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== "granted") return;
-
-      const loc = await Location.getCurrentPositionAsync({});
-      setDriverLocation({
-        latitude: loc.coords.latitude,
-        longitude: loc.coords.longitude,
-      });
-    })();
+    const loadDriverId = async () => {
+      try {
+        const stored = await SecureStore.getItemAsync("driverId");
+        console.log("📱 DriverId récupéré:", stored);
+        if (stored) {
+          setDriverId(Number(stored));
+        } else {
+          console.log("⚠️ Aucun driverId trouvé dans SecureStore");
+        }
+      } catch (error) {
+        console.log("❌ Erreur lecture driverId:", error);
+      }
+    };
+    loadDriverId();
   }, []);
 
-  // 📍 Géocodage simple (fallback Dakar si inconnu)
+  // 📍 Récupérer la position GPS initiale
   useEffect(() => {
-    if (!trip?.destination) return;
+    const getInitialLocation = async () => {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== "granted") {
+        Alert.alert("Erreur", "Permission GPS refusée");
+        return;
+      }
+      
+      const location = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.High,
+      });
+      
+      const pos = {
+        latitude: location.coords.latitude,
+        longitude: location.coords.longitude,
+      };
+      console.log("📍 Position initiale:", pos);
+      setDriverLocation(pos);
+    };
+    
+    getInitialLocation();
+  }, []);
 
-    // simplifié pour éviter API payante
-    setEndPoint({
-      latitude: 14.6937,
-      longitude: -17.4441,
-    });
+  // 🗺️ Géocoder la destination (MODIFIÉ: Ajout du géocodage gratuit en priorité)
+  useEffect(() => {
+    if (!trip?.destination) {
+      console.log("⚠️ Pas de destination dans le trip");
+      return;
+    }
 
-    setLoading(false);
+    const geocodeDestination = async () => {
+      try {
+        setGeocodingStatus(`Recherche de ${trip.destination}...`);
+        const destName = trip.destination.toLowerCase().trim();
+        
+        // Vérifier le cache
+        if (geocodingCache[destName]) {
+          console.log("✅ Destination trouvée dans le cache:", geocodingCache[destName]);
+          setEndPoint(geocodingCache[destName]);
+          setGeocodingStatus("");
+          setLoading(false);
+          return;
+        }
+
+        // 🔥 NOUVEAU : GÉOCODAGE GRATUIT EN PRIORITÉ
+        const freeCoords = freeGeocode(trip.destination);
+        if (freeCoords) {
+          console.log("✅ [Gratuit] Géocodage réussi pour:", trip.destination);
+          geocodingCache[destName] = freeCoords;
+          setEndPoint(freeCoords);
+          setGeocodingStatus("");
+          setLoading(false);
+          return;
+        }
+
+        // Chercher dans les villes sénégalaises (fallback existant)
+        let found = false;
+        for (const [city, coords] of Object.entries(SENEGAL_CITIES)) {
+          if (destName.includes(city) || city.includes(destName)) {
+            console.log(`✅ Destination trouvée dans la base locale: ${city}`);
+            geocodingCache[destName] = coords;
+            setEndPoint(coords);
+            found = true;
+            setGeocodingStatus("");
+            setLoading(false);
+            break;
+          }
+        }
+
+        if (!found && GOOGLE_MAPS_KEY) {
+          // Tentative avec Google Maps API (votre code existant)
+          setGeocodingStatus(`Recherche sur Google Maps...`);
+          let searchName = trip.destination;
+          if (searchName.toLowerCase() === "thies") searchName = "Thiès";
+          
+          const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(searchName + ", Sénégal")}&region=sn&key=${GOOGLE_MAPS_KEY}`;
+          console.log("🌐 Appel Google Geocoding:", url);
+          
+          const res = await fetch(url);
+          const json = await res.json();
+          
+          if (json.status === "OK" && json.results?.length) {
+            const loc = json.results[0].geometry.location;
+            const coords = { latitude: loc.lat, longitude: loc.lng };
+            console.log("✅ Géocodage Google réussi:", coords);
+            geocodingCache[destName] = coords;
+            setEndPoint(coords);
+            setGeocodingStatus("");
+          } else {
+            console.log("❌ Google Geocoding échec:", json.status);
+            // Fallback Dakar
+            const fallback = { latitude: 14.6937, longitude: -17.4441 };
+            geocodingCache[destName] = fallback;
+            setEndPoint(fallback);
+            setGeocodingStatus(`⚠️ Destination approximative: ${trip.destination}`);
+          }
+        } else if (!found) {
+          // Fallback Dakar
+          const fallback = { latitude: 14.6937, longitude: -17.4441 };
+          geocodingCache[destName] = fallback;
+          setEndPoint(fallback);
+          setGeocodingStatus(`⚠️ Destination approximative: ${trip.destination}`);
+        }
+      } catch (e) {
+        console.log("❌ Erreur géocodage:", e);
+        setEndPoint({ latitude: 14.6937, longitude: -17.4441 });
+        setGeocodingStatus("Erreur de localisation");
+      } finally {
+        setTimeout(() => {
+          setLoading(false);
+        }, 1000);
+      }
+    };
+
+    geocodeDestination();
   }, [trip]);
 
-  // ===============================
-  // 🔥 ROUTE MAPBOX + OSRM
-  // ===============================
+  // 🗺️ Calcul de l'itinéraire (Google Directions API)
   const fetchRoute = async () => {
-    if (!driverLocation || !endPoint) return;
+    if (!driverLocation || !endPoint) {
+      console.log("⚠️ Pas de position ou destination pour fetchRoute");
+      return;
+    }
 
     const now = Date.now();
-    if (isFetchingRef.current || now - lastFetchTimeRef.current < 8000) return;
+    if (isFetchingRef.current || now - lastFetchTimeRef.current < 10000) {
+      console.log("⏳ Route en cours de calcul ou trop récente");
+      return;
+    }
 
     isFetchingRef.current = true;
     lastFetchTimeRef.current = now;
 
-    const key = `${driverLocation.latitude}-${driverLocation.longitude}-${endPoint.latitude}-${endPoint.longitude}`;
-
-    if (routesCache[key]) {
-      setRouteCoords(routesCache[key]);
+    const cacheKey = `${driverLocation.latitude.toFixed(4)},${driverLocation.longitude.toFixed(4)}-${endPoint.latitude.toFixed(4)},${endPoint.longitude.toFixed(4)}`;
+    if (routesCache[cacheKey]) {
+      console.log("✅ Route trouvée dans le cache");
+      setRouteCoords(routesCache[cacheKey]);
       isFetchingRef.current = false;
       return;
     }
 
     try {
-      // MAPBOX
-      const url = `https://api.mapbox.com/directions/v5/mapbox/driving/${driverLocation.longitude},${driverLocation.latitude};${endPoint.longitude},${endPoint.latitude}?geometries=polyline&overview=full&access_token=${MAPBOX_TOKEN}`;
-
+      console.log("🌐 Appel Directions API...");
+      const url = `https://maps.googleapis.com/maps/api/directions/json?origin=${driverLocation.latitude},${driverLocation.longitude}&destination=${endPoint.latitude},${endPoint.longitude}&mode=driving&key=${GOOGLE_MAPS_KEY}&language=fr`;
+      
       const res = await fetch(url);
       const json = await res.json();
 
-      if (json.routes?.length) {
+      if (json.status === "OK" && json.routes?.length) {
         const route = json.routes[0];
-
-        const coords = decodePolyline(route.geometry);
-        routesCache[key] = coords;
-
-        setRouteCoords(coords);
-        setEta(`${Math.round(route.duration / 60)} min`);
-        setDistance(route.distance);
-
-        return;
-      }
-
-      throw new Error("Mapbox fail");
-
-    } catch (e) {
-      try {
-        // OSRM
-        const url = `https://router.project-osrm.org/route/v1/driving/${driverLocation.longitude},${driverLocation.latitude};${endPoint.longitude},${endPoint.latitude}?overview=full&geometries=polyline`;
-
-        const res = await fetch(url);
-        const json = await res.json();
-
-        if (json.routes?.length) {
-          const route = json.routes[0];
-
-          const coords = decodePolyline(route.geometry);
-          routesCache[key] = coords;
-
-          setRouteCoords(coords);
-          setEta(`${Math.round(route.duration / 60)} min`);
-          setDistance(route.distance);
-
-          return;
-        }
-
-        throw new Error("OSRM fail");
-
-      } catch {
+        const leg = route.legs[0];
+        
+        const points = decodePolyline(route.overview_polyline.points);
+        routesCache[cacheKey] = points;
+        setRouteCoords(points);
+        
+        setRouteInfo({
+          duration: leg.duration.text,
+          distance: leg.distance.text,
+          steps: leg.steps,
+        });
+        
+        setEta(`${leg.duration.text} • ${leg.distance.text}`);
+        
+        const dist = calculateDistance(driverLocation, endPoint);
+        setRemainingDistance(dist);
+        console.log("✅ Itinéraire calculé:", leg.distance.text, leg.duration.text);
+      } else {
+        console.log("❌ Directions API échec:", json.status);
         fallbackRoute();
       }
+    } catch (e) {
+      console.log("❌ Directions API error:", e);
+      fallbackRoute();
     } finally {
       isFetchingRef.current = false;
     }
   };
 
-  // fallback ligne droite
+  // Fallback ligne droite
   const fallbackRoute = () => {
     if (!driverLocation || !endPoint) return;
-
-    const pts = [];
-    for (let i = 0; i <= 20; i++) {
-      const t = i / 20;
-      pts.push({
+    console.log("📍 Utilisation du fallback ligne droite");
+    const points: Coordinates[] = [];
+    for (let i = 0; i <= 30; i++) {
+      const t = i / 30;
+      points.push({
         latitude: driverLocation.latitude + (endPoint.latitude - driverLocation.latitude) * t,
         longitude: driverLocation.longitude + (endPoint.longitude - driverLocation.longitude) * t,
       });
     }
-    setRouteCoords(pts);
+    setRouteCoords(points);
+    const dist = calculateDistance(driverLocation, endPoint);
+    setRemainingDistance(dist);
+    setEta(`${(dist / 1000).toFixed(1)} km (estimation)`);
   };
 
-  // polyline decode
-  const decodePolyline = (str: string) => {
-    let index = 0, lat = 0, lng = 0, coords = [];
+  // Calculer l'itinéraire quand les positions sont disponibles
+  useEffect(() => {
+    if (driverLocation && endPoint && !loading) {
+      fetchRoute();
+    }
+  }, [driverLocation, endPoint, loading]);
 
-    while (index < str.length) {
+  // 📍 GPS (uniquement si navigation active)
+  useEffect(() => {
+    if (!navigationActive) return;
+
+    const startWatching = async () => {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== "granted") {
+        Alert.alert("Erreur", "Permission GPS refusée");
+        return;
+      }
+
+      watchPositionRef.current = await Location.watchPositionAsync(
+        {
+          accuracy: Location.Accuracy.High,
+          timeInterval: 3000,
+          distanceInterval: 10,
+        },
+        async (location) => {
+          const pos = {
+            latitude: location.coords.latitude,
+            longitude: location.coords.longitude,
+          };
+
+          setDriverLocation(pos);
+
+          // Calculer la distance restante
+          if (endPoint) {
+            const distanceToDestination = calculateDistance(pos, endPoint);
+            setRemainingDistance(distanceToDestination);
+            
+            const timeMin = Math.round(distanceToDestination / 1000 / 60 * 60);
+            setEta(timeMin < 60 ? `${timeMin} min` : `${Math.floor(timeMin / 60)}h ${timeMin % 60}min`);
+
+            // Vérifier arrivée
+            if (distanceToDestination < 100 && !tripCompleted) {
+              handleArriveAtDestination();
+            }
+          }
+
+          // Envoyer position au serveur
+          const now = Date.now();
+          if (driverId && now - lastLocationSentRef.current >= 4000) {
+            lastLocationSentRef.current = now;
+            try {
+              const token = await SecureStore.getItemAsync("token");
+              await fetch(`${API_URL}/api/driver/update_location`, {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify({
+                  driver_id: driverId,
+                  lat: pos.latitude,
+                  lng: pos.longitude,
+                }),
+              });
+            } catch (error) {
+              console.log("❌ Erreur envoi position:", error);
+            }
+          }
+        }
+      );
+    };
+
+    startWatching();
+    return () => {
+      if (watchPositionRef.current) {
+        watchPositionRef.current.remove();
+      }
+    };
+  }, [navigationActive, driverId, endPoint]);
+
+  // Démarrage de la navigation
+  const startNavigation = () => {
+    if (!driverLocation || !endPoint) {
+      Alert.alert("Erreur", "Position ou destination non disponible");
+      return;
+    }
+    console.log("🚀 Démarrage navigation");
+    setNavigationActive(true);
+    navigationStartedRef.current = true;
+    fetchRoute();
+    Speech.speak(`Navigation vers ${trip?.destination} démarrée`, { language: "fr" });
+  };
+
+  // Arrivée à destination
+  const handleArriveAtDestination = () => {
+    if (tripCompleted) return;
+    setTripCompleted(true);
+    setNavigationActive(false);
+    
+    Speech.speak("Vous êtes arrivé à destination. Terminez la course.", { language: "fr" });
+    
+    Alert.alert(
+      "Arrivée à destination",
+      "Vous êtes arrivé. Souhaitez-vous terminer la course ?",
+      [
+        { text: "Continuer", style: "cancel", onPress: () => {
+            setNavigationActive(true);
+            setTripCompleted(false);
+          }
+        },
+        {
+          text: "Terminer la course",
+          onPress: () => completeTrip()
+        }
+      ]
+    );
+  };
+
+  // Terminer le trajet
+  const completeTrip = async () => {
+    try {
+      const token = await SecureStore.getItemAsync("token");
+      
+      const response = await fetch(`${API_URL}/api/trips/complete/${trip?.id}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      const result = await response.json();
+      
+      if (response.ok) {
+        Alert.alert(
+          "Course terminée",
+          "Le trajet a été marqué comme terminé.",
+          [{ text: "OK", onPress: () => router.back() }]
+        );
+      } else {
+        Alert.alert("Erreur", result.message || "Impossible de terminer la course");
+      }
+    } catch (error) {
+      console.log("❌ Erreur fin course:", error);
+      Alert.alert("Erreur", "Impossible de terminer la course");
+    }
+  };
+
+  // Calcul de distance (Haversine)
+  const calculateDistance = (point1: Coordinates, point2: Coordinates): number => {
+    const R = 6371e3;
+    const φ1 = (point1.latitude * Math.PI) / 180;
+    const φ2 = (point2.latitude * Math.PI) / 180;
+    const Δφ = ((point2.latitude - point1.latitude) * Math.PI) / 180;
+    const Δλ = ((point2.longitude - point1.longitude) * Math.PI) / 180;
+    const a = Math.sin(Δφ / 2) ** 2 + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) ** 2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  };
+
+  // Décodage polyline
+  const decodePolyline = (encoded: string): Coordinates[] => {
+    const points: Coordinates[] = [];
+    let index = 0, lat = 0, lng = 0;
+    while (index < encoded.length) {
       let b, shift = 0, result = 0;
       do {
-        b = str.charCodeAt(index++) - 63;
-        result |= (b & 31) << shift;
+        b = encoded.charCodeAt(index++) - 63;
+        result |= (b & 0x1f) << shift;
         shift += 5;
-      } while (b >= 32);
+      } while (b >= 0x20);
       lat += (result & 1) ? ~(result >> 1) : (result >> 1);
-
-      shift = 0;
-      result = 0;
+      shift = 0; result = 0;
       do {
-        b = str.charCodeAt(index++) - 63;
-        result |= (b & 31) << shift;
+        b = encoded.charCodeAt(index++) - 63;
+        result |= (b & 0x1f) << shift;
         shift += 5;
-      } while (b >= 32);
+      } while (b >= 0x20);
       lng += (result & 1) ? ~(result >> 1) : (result >> 1);
-
-      coords.push({
-        latitude: lat / 1e5,
-        longitude: lng / 1e5,
-      });
+      points.push({ latitude: lat / 1e5, longitude: lng / 1e5 });
     }
-
-    return coords;
+    return points;
   };
-
-  const lastRouteFetchRef = useRef(0);
-
-  useEffect(() => {
-    if (driverLocation && endPoint) fetchRoute();
-  }, [driverLocation, endPoint]);
 
   if (loading || !driverLocation || !endPoint) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator size="large" />
-        <Text>Chargement...</Text>
+        <ActivityIndicator size="large" color={COLORS.primary} />
+        <Text style={styles.loadingText}>
+          {geocodingStatus || "Préparation de la navigation..."}
+        </Text>
+        {!driverLocation && (
+          <Text style={styles.destinationText}>🔍 Récupération de votre position...</Text>
+        )}
+        {driverLocation && !endPoint && (
+          <Text style={styles.destinationText}>🔍 Localisation de {trip?.destination}...</Text>
+        )}
+        {trip?.destination && (
+          <Text style={styles.destinationText}>Vers : {trip.destination}</Text>
+        )}
       </View>
     );
   }
 
   return (
-    <View style={{ flex: 1 }}>
+    <View style={styles.container}>
+      {/* Bandeau d'information ETA */}
+      {navigationActive && (
+        <View style={styles.infoBanner}>
+          <Text style={styles.destinationName}>🏁 {trip?.destination}</Text>
+          <View style={styles.statsRow}>
+            <View style={styles.statItem}>
+              <Text style={styles.statLabel}>Distance restante</Text>
+              <Text style={styles.statValue}>{(remainingDistance / 1000).toFixed(1)} km</Text>
+            </View>
+            <View style={styles.statDivider} />
+            <View style={styles.statItem}>
+              <Text style={styles.statLabel}>Temps estimé</Text>
+              <Text style={styles.statValue}>{eta.split("•")[0] || eta}</Text>
+            </View>
+          </View>
+        </View>
+      )}
+
       <MapView
         ref={mapRef}
-        style={{ flex: 1 }}
+        style={styles.map}
         initialRegion={{
-          ...driverLocation,
+          latitude: driverLocation.latitude,
+          longitude: driverLocation.longitude,
           latitudeDelta: 0.05,
           longitudeDelta: 0.05,
         }}
+        showsUserLocation={true}
+        showsMyLocationButton={true}
+        zoomEnabled={true}
+        zoomTapEnabled={true}
       >
-        <Marker coordinate={driverLocation} rotation={heading} />
-        <Marker coordinate={endPoint} pinColor="red" />
+        <Marker coordinate={driverLocation} rotation={heading} flat>
+          <Text style={{ fontSize: 32 }}>🚗</Text>
+        </Marker>
+        <Marker coordinate={endPoint} pinColor="red">
+          <Text style={{ fontSize: 28 }}>🏁</Text>
+        </Marker>
 
         {routeCoords.length > 0 && (
-          <Polyline coordinates={routeCoords} strokeWidth={5} />
+          <Polyline
+            coordinates={routeCoords}
+            strokeWidth={6}
+            strokeColor="#2563EB"
+            lineDashPattern={navigationActive ? undefined : [10, 10]}
+          />
         )}
       </MapView>
 
-      <View style={styles.info}>
-        <Text>{trip?.destination}</Text>
-        <Text>{(distance / 1000).toFixed(1)} km</Text>
-        <Text>{eta}</Text>
-      </View>
+      {/* Bouton Retour */}
+      <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+        <Text style={styles.buttonText}>← Retour</Text>
+      </TouchableOpacity>
 
+      {/* Centrer sur la position */}
       <TouchableOpacity
-        style={styles.btn}
+        style={styles.recenterButton}
         onPress={() => {
-          setNavigationActive(true);
-          fetchRoute();
-          Speech.speak("Navigation démarrée", { language: "fr" });
+          if (mapRef.current && driverLocation) {
+            mapRef.current.animateToRegion({
+              latitude: driverLocation.latitude,
+              longitude: driverLocation.longitude,
+              latitudeDelta: 0.01,
+              longitudeDelta: 0.01,
+            });
+          }
         }}
       >
-        <Text style={{ color: "#fff" }}>Démarrer</Text>
+        <Text style={styles.buttonText}>📍</Text>
       </TouchableOpacity>
+
+      {/* Bouton Démarrer / Terminer la navigation */}
+      {!navigationActive && !tripCompleted && routeCoords.length > 0 && (
+        <TouchableOpacity style={styles.startButton} onPress={startNavigation}>
+          <Text style={styles.startButtonText}>▶️ Démarrer la navigation</Text>
+        </TouchableOpacity>
+      )}
+
+      {!navigationActive && !tripCompleted && routeCoords.length === 0 && (
+        <TouchableOpacity style={styles.startButtonDisabled} disabled>
+          <Text style={styles.startButtonText}>⏳ Calcul de l'itinéraire...</Text>
+        </TouchableOpacity>
+      )}
+
+      {navigationActive && !tripCompleted && (
+        <TouchableOpacity style={styles.stopButton} onPress={completeTrip}>
+          <Text style={styles.stopButtonText}>⏹️ Terminer la course</Text>
+        </TouchableOpacity>
+      )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  center: { flex: 1, justifyContent: "center", alignItems: "center" },
-  info: {
+  container: { flex: 1 },
+  map: { flex: 1 },
+  center: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#1a1a2e",
+  },
+  loadingText: { marginTop: 10, color: COLORS.textLight, fontSize: 14 },
+  destinationText: { marginTop: 6, color: "#999", fontSize: 13 },
+  infoBanner: {
     position: "absolute",
     top: 50,
-    left: 20,
-    right: 20,
+    left: 16,
+    right: 16,
     backgroundColor: "#fff",
-    padding: 10,
-    borderRadius: 10,
+    borderRadius: 16,
+    padding: 14,
+    zIndex: 10,
+    elevation: 5,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
   },
-  btn: {
+  destinationName: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#1F2937",
+    textAlign: "center",
+    marginBottom: 10,
+  },
+  statsRow: {
+    flexDirection: "row",
+    justifyContent: "space-around",
+    borderTopWidth: 1,
+    borderTopColor: "#E5E7EB",
+    paddingTop: 10,
+  },
+  statItem: { alignItems: "center", flex: 1 },
+  statLabel: { fontSize: 11, color: "#6B7280" },
+  statValue: { fontSize: 16, fontWeight: "700", color: "#2563EB", marginTop: 2 },
+  statDivider: { width: 1, height: 30, backgroundColor: "#E5E7EB" },
+  backButton: {
     position: "absolute",
-    bottom: 40,
+    top: 120,
+    left: 16,
+    backgroundColor: "rgba(0,0,0,0.7)",
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 10,
+    zIndex: 10,
+  },
+  recenterButton: {
+    position: "absolute",
+    bottom: 100,
+    right: 16,
+    backgroundColor: "rgba(0,0,0,0.7)",
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    justifyContent: "center",
+    alignItems: "center",
+    zIndex: 10,
+  },
+  startButton: {
+    position: "absolute",
+    bottom: 30,
     left: 20,
     right: 20,
-    backgroundColor: "green",
-    padding: 15,
-    alignItems: "center",
+    backgroundColor: COLORS.success,
+    paddingVertical: 16,
     borderRadius: 30,
+    alignItems: "center",
+    zIndex: 10,
   },
+  startButtonDisabled: {
+    position: "absolute",
+    bottom: 30,
+    left: 20,
+    right: 20,
+    backgroundColor: "#999",
+    paddingVertical: 16,
+    borderRadius: 30,
+    alignItems: "center",
+    zIndex: 10,
+  },
+  startButtonText: { color: "#fff", fontWeight: "700", fontSize: 16 },
+  stopButton: {
+    position: "absolute",
+    bottom: 30,
+    left: 20,
+    right: 20,
+    backgroundColor: COLORS.danger,
+    paddingVertical: 16,
+    borderRadius: 30,
+    alignItems: "center",
+    zIndex: 10,
+  },
+  stopButtonText: { color: "#fff", fontWeight: "700", fontSize: 16 },
+  buttonText: { color: "#fff", fontSize: 14, fontWeight: "600" },
 });
