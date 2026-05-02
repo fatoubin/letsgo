@@ -5,7 +5,12 @@ import {
   TextInput,
   StyleSheet,
   Alert,
-  ActivityIndicator
+  ActivityIndicator,
+  ScrollView,
+  KeyboardAvoidingView,
+  Platform,
+  TouchableWithoutFeedback,
+  Keyboard
 } from "react-native";
 
 import { useRouter, useLocalSearchParams } from "expo-router";
@@ -86,59 +91,69 @@ export default function DriverRegisterStep3() {
   };
 
   return (
+    <KeyboardAvoidingView
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      style={{ flex: 1 }}
+    >
+      <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+        <ScrollView 
+          contentContainerStyle={globalStyles.screen}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
 
-    <View style={globalStyles.screen}>
+          <Text style={styles.title}>Inscrivez-vous</Text>
 
-      <Text style={styles.title}>Inscrivez-vous</Text>
+          <View style={styles.field}>
+            <Text style={styles.label}>Marque de véhicule</Text>
+            <TextInput
+              value={brand}
+              onChangeText={setBrand}
+              placeholder="Ex: Toyota, Peugeot..."
+              placeholderTextColor={COLORS.textMuted}
+              style={styles.input}
+            />
+          </View>
 
-      <View style={styles.field}>
-        <Text style={styles.label}>Marque de véhicule</Text>
-        <TextInput
-          value={brand}
-          onChangeText={setBrand}
-          placeholder="Ex: Toyota, Peugeot..."
-          placeholderTextColor={COLORS.textMuted}
-          style={styles.input}
-        />
-      </View>
+          <View style={styles.field}>
+            <Text style={styles.label}>Plaque d'immatriculation</Text>
+            <TextInput
+              value={plate}
+              onChangeText={setPlate}
+              placeholder="Ex: DK 1234 AA"
+              placeholderTextColor={COLORS.textMuted}
+              style={styles.input}
+              autoCapitalize="characters"
+            />
+          </View>
 
-      <View style={styles.field}>
-        <Text style={styles.label}>Plaque d'immatriculation</Text>
-        <TextInput
-          value={plate}
-          onChangeText={setPlate}
-          placeholder="Ex: DK 1234 AA"
-          placeholderTextColor={COLORS.textMuted}
-          style={styles.input}
-          autoCapitalize="characters"
-        />
-      </View>
+          <View style={styles.field}>
+            <Text style={styles.labelStrong}>Nombre de places</Text>
+            <TextInput
+              value={seats}
+              onChangeText={setSeats}
+              placeholder="Ex: 4"
+              placeholderTextColor={COLORS.textMuted}
+              keyboardType="numeric"
+              style={styles.input}
+              maxLength={1}
+            />
+          </View>
 
-      <View style={styles.field}>
-        <Text style={styles.labelStrong}>Nombre de places</Text>
-        <TextInput
-          value={seats}
-          onChangeText={setSeats}
-          placeholder="Ex: 4"
-          placeholderTextColor={COLORS.textMuted}
-          keyboardType="numeric"
-          style={styles.input}
-          maxLength={1}
-        />
-      </View>
+          <View style={styles.buttonContainer}>
+            {loading ? (
+              <ActivityIndicator size="large" color={COLORS.textLight} />
+            ) : (
+              <PrimaryButton
+                title="Créer mon compte"
+                onPress={submitDriver}
+              />
+            )}
+          </View>
 
-      <View style={styles.buttonContainer}>
-        {loading ? (
-          <ActivityIndicator size="large" color={COLORS.textLight} />
-        ) : (
-          <PrimaryButton
-            title="Créer mon compte"
-            onPress={submitDriver}
-          />
-        )}
-      </View>
-
-    </View>
+        </ScrollView>
+      </TouchableWithoutFeedback>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -178,7 +193,8 @@ const styles = StyleSheet.create({
   },
 
   buttonContainer: {
-    marginTop: 40
+    marginTop: 40,
+    marginBottom: 20
   }
 
 });

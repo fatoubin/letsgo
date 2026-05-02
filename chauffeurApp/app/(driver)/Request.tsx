@@ -9,7 +9,12 @@ import {
   Alert,
   Switch,
   Modal,
-  TextInput
+  TextInput,
+  ScrollView,
+  KeyboardAvoidingView,
+  Platform,
+  TouchableWithoutFeedback,
+  Keyboard
 } from "react-native";
 
 import * as SecureStore from "expo-secure-store";
@@ -205,41 +210,53 @@ const fetchRequests = async (id: number) => {
   }
 
   return (
-    <View style={globalStyles.screen}>
-      <Text style={styles.title}>Demandes de réservations</Text>
+    <KeyboardAvoidingView
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      style={{ flex: 1 }}
+    >
+      <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+        <ScrollView 
+          contentContainerStyle={globalStyles.screen}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
+          <Text style={styles.title}>Demandes de réservations</Text>
 
-      {/* Alerte sonore toggle */}
-      <View style={styles.alertRow}>
-        <Text style={styles.alertText}>Alertes sonores activées pour les nouvelles demandes</Text>
-        <Switch
-          value={soundEnabled}
-          onValueChange={setSoundEnabled}
-          trackColor={{ false: "#767577", true: COLORS.primary }}
-          thumbColor="#fff"
-        />
-      </View>
+          {/* Alerte sonore toggle */}
+          <View style={styles.alertRow}>
+            <Text style={styles.alertText}>Alertes sonores activées pour les nouvelles demandes</Text>
+            <Switch
+              value={soundEnabled}
+              onValueChange={setSoundEnabled}
+              trackColor={{ false: "#767577", true: COLORS.primary }}
+              thumbColor="#fff"
+            />
+          </View>
 
-      {requests.length === 0 ? (
-        <View style={styles.emptyContainer}>
-          <Text style={styles.emptyText}>Aucune demande pour le moment.</Text>
-          <Text style={styles.footerMessage}>
-            "Conduisez prudemment, nous veillons sur vos trajets."
-          </Text>
-        </View>
-      ) : (
-        <>
-          <FlatList
-            data={requests}
-            keyExtractor={(item) => item.id.toString()}
-            renderItem={renderItem}
-            showsVerticalScrollIndicator={false}
-            contentContainerStyle={styles.listContent}
-          />
-          <Text style={styles.footerMessage}>
-            "Conduisez prudemment, nous veillons sur vos trajets."
-          </Text>
-        </>
-      )}
+          {requests.length === 0 ? (
+            <View style={styles.emptyContainer}>
+              <Text style={styles.emptyText}>Aucune demande pour le moment.</Text>
+              <Text style={styles.footerMessage}>
+                "Conduisez prudemment, nous veillons sur vos trajets."
+              </Text>
+            </View>
+          ) : (
+            <>
+              <FlatList
+                data={requests}
+                keyExtractor={(item) => item.id.toString()}
+                renderItem={renderItem}
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={styles.listContent}
+                scrollEnabled={false}
+              />
+              <Text style={styles.footerMessage}>
+                "Conduisez prudemment, nous veillons sur vos trajets."
+              </Text>
+            </>
+          )}
+        </ScrollView>
+      </TouchableWithoutFeedback>
 
       {/* Modal pour faire une offre de prix */}
       <Modal
@@ -248,65 +265,72 @@ const fetchRequests = async (id: number) => {
         animationType="slide"
         onRequestClose={() => setShowPriceModal(false)}
       >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContainer}>
-            <Text style={styles.modalTitle}>💰 Faire une offre</Text>
-            <Text style={styles.modalSubtitle}>
-              Proposez un prix pour ce trajet
-            </Text>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          style={{ flex: 1 }}
+        >
+          <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+            <View style={styles.modalOverlay}>
+              <View style={styles.modalContainer}>
+                <Text style={styles.modalTitle}>💰 Faire une offre</Text>
+                <Text style={styles.modalSubtitle}>
+                  Proposez un prix pour ce trajet
+                </Text>
 
-            {selectedDemande && (
-              <Text style={styles.modalRoute}>
-                {selectedDemande.depart} → {selectedDemande.destination}
-              </Text>
-            )}
+                {selectedDemande && (
+                  <Text style={styles.modalRoute}>
+                    {selectedDemande.depart} → {selectedDemande.destination}
+                  </Text>
+                )}
 
-            <Text style={styles.priceLabel}>Prix proposé (FCFA)</Text>
-            <TextInput
-              style={styles.priceInput}
-              placeholder="Ex: 5000"
-              placeholderTextColor={COLORS.textMuted}
-              keyboardType="numeric"
-              value={proposedPrice}
-              onChangeText={setProposedPrice}
-            />
-            <Text style={styles.currencyHint}>Montant total pour la course</Text>
+                <Text style={styles.priceLabel}>Prix proposé (FCFA)</Text>
+                <TextInput
+                  style={styles.priceInput}
+                  placeholder="Ex: 5000"
+                  placeholderTextColor={COLORS.textMuted}
+                  keyboardType="numeric"
+                  value={proposedPrice}
+                  onChangeText={setProposedPrice}
+                />
+                <Text style={styles.currencyHint}>Montant total pour la course</Text>
 
-            <Text style={styles.messageLabel}>Message (optionnel)</Text>
-            <TextInput
-              style={styles.messageInput}
-              placeholder="Ajoutez un message au client..."
-              placeholderTextColor={COLORS.textMuted}
-              multiline={true}
-              numberOfLines={3}
-              value={negotiationMessage}
-              onChangeText={setNegotiationMessage}
-            />
+                <Text style={styles.messageLabel}>Message (optionnel)</Text>
+                <TextInput
+                  style={styles.messageInput}
+                  placeholder="Ajoutez un message au client..."
+                  placeholderTextColor={COLORS.textMuted}
+                  multiline={true}
+                  numberOfLines={3}
+                  value={negotiationMessage}
+                  onChangeText={setNegotiationMessage}
+                />
 
-            <View style={styles.modalButtons}>
-              <TouchableOpacity
-                style={styles.modalCancelButton}
-                onPress={() => {
-                  setShowPriceModal(false);
-                  setProposedPrice("");
-                  setNegotiationMessage("");
-                  setSelectedDemande(null);
-                }}
-              >
-                <Text style={styles.modalCancelButtonText}>Annuler</Text>
-              </TouchableOpacity>
+                <View style={styles.modalButtons}>
+                  <TouchableOpacity
+                    style={styles.modalCancelButton}
+                    onPress={() => {
+                      setShowPriceModal(false);
+                      setProposedPrice("");
+                      setNegotiationMessage("");
+                      setSelectedDemande(null);
+                    }}
+                  >
+                    <Text style={styles.modalCancelButtonText}>Annuler</Text>
+                  </TouchableOpacity>
 
-              <TouchableOpacity
-                style={styles.modalConfirmButton}
-                onPress={handleMakeOffer}
-              >
-                <Text style={styles.modalConfirmButtonText}>Envoyer l'offre</Text>
-              </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.modalConfirmButton}
+                    onPress={handleMakeOffer}
+                  >
+                    <Text style={styles.modalConfirmButtonText}>Envoyer l'offre</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
             </View>
-          </View>
-        </View>
+          </TouchableWithoutFeedback>
+        </KeyboardAvoidingView>
       </Modal>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 

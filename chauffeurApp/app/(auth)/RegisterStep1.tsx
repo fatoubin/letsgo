@@ -5,7 +5,12 @@ import {
   TextInput,
   Alert,
   StyleSheet,
-  TouchableOpacity
+  TouchableOpacity,
+  ScrollView,
+  KeyboardAvoidingView,
+  Platform,
+  TouchableWithoutFeedback,
+  Keyboard
 } from "react-native";
 
 import { useRouter } from "expo-router";
@@ -65,134 +70,145 @@ export default function DriverRegisterStep1() {
   };
 
   return (
-    <View style={globalStyles.screen}>
+    <KeyboardAvoidingView
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      style={{ flex: 1 }}
+    >
+      <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+        <ScrollView 
+          contentContainerStyle={globalStyles.screen}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
 
-      <Text style={styles.title}>Inscrivez-vous</Text>
+          <Text style={styles.title}>Inscrivez-vous</Text>
 
-      <View style={styles.row}>
+          <View style={styles.row}>
 
-        <View style={styles.halfField}>
-          <Text style={styles.label}>Prénom</Text>
+            <View style={styles.halfField}>
+              <Text style={styles.label}>Prénom</Text>
 
-          <TextInput
-            value={firstname}
-            onChangeText={setFirstname}
-            placeholder="Votre prénom"
-            placeholderTextColor={COLORS.textMuted}
-            style={styles.input}
-          />
-        </View>
+              <TextInput
+                value={firstname}
+                onChangeText={setFirstname}
+                placeholder="Votre prénom"
+                placeholderTextColor={COLORS.textMuted}
+                style={styles.input}
+              />
+            </View>
 
-        <View style={styles.halfField}>
-          <Text style={styles.label}>Nom</Text>
+            <View style={styles.halfField}>
+              <Text style={styles.label}>Nom</Text>
 
-          <TextInput
-            value={lastname}
-            onChangeText={setLastname}
-            placeholder="Votre nom"
-            placeholderTextColor={COLORS.textMuted}
-            style={styles.input}
-          />
-        </View>
+              <TextInput
+                value={lastname}
+                onChangeText={setLastname}
+                placeholder="Votre nom"
+                placeholderTextColor={COLORS.textMuted}
+                style={styles.input}
+              />
+            </View>
 
-      </View>
-
-      <View style={styles.field}>
-        <Text style={styles.label}>Adresse e-mail</Text>
-
-        <TextInput
-          value={email}
-          onChangeText={setEmail}
-          placeholder="Exemple@email.com"
-          placeholderTextColor={COLORS.textMuted}
-          keyboardType="email-address"
-          autoCapitalize="none"
-          style={styles.input}
-        />
-      </View>
-
-      <View style={styles.field}>
-        <Text style={styles.label}>Numéro de Téléphone</Text>
-
-        <View style={styles.phoneRow}>
-
-          <View style={styles.countryCode}>
-            <Text style={styles.countryText}>+221</Text>
           </View>
 
-          <TextInput
-            value={phone}
-            onChangeText={setPhone}
-            placeholder="77 xxx xx xx"
-            placeholderTextColor={COLORS.textMuted}
-            keyboardType="phone-pad"
-            style={styles.phoneInput}
-          />
+          <View style={styles.field}>
+            <Text style={styles.label}>Adresse e-mail</Text>
 
-        </View>
-      </View>
+            <TextInput
+              value={email}
+              onChangeText={setEmail}
+              placeholder="Exemple@email.com"
+              placeholderTextColor={COLORS.textMuted}
+              keyboardType="email-address"
+              autoCapitalize="none"
+              style={styles.input}
+            />
+          </View>
 
-      <View style={styles.field}>
+          <View style={styles.field}>
+            <Text style={styles.label}>Numéro de Téléphone</Text>
 
-        <Text style={styles.label}>Mot de passe</Text>
+            <View style={styles.phoneRow}>
 
-        <TextInput
-          value={password}
-          onChangeText={setPassword}
-          placeholder="xxxxxxxx"
-          placeholderTextColor={COLORS.textMuted}
-          secureTextEntry
-          style={styles.input}
-        />
+              <View style={styles.countryCode}>
+                <Text style={styles.countryText}>+221</Text>
+              </View>
 
-        <Text style={styles.hint}>
-          Doit contenir au moins 8 caractères.
-        </Text>
+              <TextInput
+                value={phone}
+                onChangeText={setPhone}
+                placeholder="77 xxx xx xx"
+                placeholderTextColor={COLORS.textMuted}
+                keyboardType="phone-pad"
+                style={styles.phoneInput}
+              />
 
-      </View>
+            </View>
+          </View>
 
-      <TouchableOpacity
-        style={styles.termsRow}
-        onPress={() => setAccepted(!accepted)}
-        activeOpacity={0.8}
-      >
+          <View style={styles.field}>
 
-        <View
-          style={[
-            styles.checkbox,
-            accepted && styles.checkboxChecked
-          ]}
-        />
+            <Text style={styles.label}>Mot de passe</Text>
 
-        <Text style={styles.termsText}>
-          En créant un compte, vous acceptez nos{" "}
-          <Text style={styles.link}>conditions d’utilisation</Text> et notre{" "}
-          <Text style={styles.link}>politique de confidentialité</Text>.
-        </Text>
+            <TextInput
+              value={password}
+              onChangeText={setPassword}
+              placeholder="xxxxxxxx"
+              placeholderTextColor={COLORS.textMuted}
+              secureTextEntry
+              style={styles.input}
+            />
 
-      </TouchableOpacity>
+            <Text style={styles.hint}>
+              Doit contenir au moins 8 caractères.
+            </Text>
 
-      <View style={styles.buttonContainer}>
+          </View>
 
-        <PrimaryButton
-          title="Suivant"
-          onPress={handleNext}
-          style={{ backgroundColor: COLORS.primary }}
-        />
+          <TouchableOpacity
+            style={styles.termsRow}
+            onPress={() => setAccepted(!accepted)}
+            activeOpacity={0.8}
+          >
 
-      </View>
+            <View
+              style={[
+                styles.checkbox,
+                accepted && styles.checkboxChecked
+              ]}
+            />
 
-      <Text style={styles.loginText}>
-        vous avez déjà un compte ?{" "}
-        <Text
-          style={styles.link}
-          onPress={() => router.push("/(auth)/login")}
-        >
-          se connecter
-        </Text>
-      </Text>
+            <Text style={styles.termsText}>
+              En créant un compte, vous acceptez nos{" "}
+              <Text style={styles.link}>conditions d’utilisation</Text> et notre{" "}
+              <Text style={styles.link}>politique de confidentialité</Text>.
+            </Text>
 
-    </View>
+          </TouchableOpacity>
+
+          <View style={styles.buttonContainer}>
+
+            <PrimaryButton
+              title="Suivant"
+              onPress={handleNext}
+              style={{ backgroundColor: COLORS.primary }}
+            />
+
+          </View>
+
+          <Text style={styles.loginText}>
+            vous avez déjà un compte ?{" "}
+            <Text
+              style={styles.link}
+              onPress={() => router.push("/(auth)/login")}
+            >
+              se connecter
+            </Text>
+          </Text>
+
+        </ScrollView>
+      </TouchableWithoutFeedback>
+    </KeyboardAvoidingView>
   );
 }
 

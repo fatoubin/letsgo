@@ -4,7 +4,12 @@ import {
   Text,
   TextInput,
   StyleSheet,
-  TouchableOpacity
+  TouchableOpacity,
+  ScrollView,
+  KeyboardAvoidingView,
+  Platform,
+  TouchableWithoutFeedback,
+  Keyboard
 } from "react-native";
 
 import { useRouter, useLocalSearchParams } from "expo-router";
@@ -39,64 +44,75 @@ export default function DriverRegisterStep2() {
   };
 
   return (
-    <View style={globalStyles.screen}>
+    <KeyboardAvoidingView
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      style={{ flex: 1 }}
+    >
+      <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+        <ScrollView 
+          contentContainerStyle={globalStyles.screen}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
 
-      <Text style={styles.title}>Inscrivez-vous</Text>
+          <Text style={styles.title}>Inscrivez-vous</Text>
 
-      <View style={styles.field}>
-        <Text style={styles.label}>Photo profile</Text>
+          <View style={styles.field}>
+            <Text style={styles.label}>Photo profile</Text>
 
-        <TouchableOpacity style={styles.uploadInput}>
-          <Text style={styles.placeholder}>Photo profile</Text>
-          <Text style={styles.icon}>＋</Text>
-        </TouchableOpacity>
-      </View>
+            <TouchableOpacity style={styles.uploadInput}>
+              <Text style={styles.placeholder}>Photo profile</Text>
+              <Text style={styles.icon}>＋</Text>
+            </TouchableOpacity>
+          </View>
 
-      <View style={styles.field}>
-        <Text style={styles.label}>Âge</Text>
+          <View style={styles.field}>
+            <Text style={styles.label}>Âge</Text>
 
-        <TextInput
-          value={age}
-          onChangeText={setAge}
-          placeholder="Âge"
-          placeholderTextColor={COLORS.textMuted}
-          keyboardType="numeric"
-          style={styles.input}
-        />
-      </View>
+            <TextInput
+              value={age}
+              onChangeText={setAge}
+              placeholder="Âge"
+              placeholderTextColor={COLORS.textMuted}
+              keyboardType="numeric"
+              style={styles.input}
+            />
+          </View>
 
-      <View style={styles.field}>
-        <Text style={styles.label}>Numéro permis de conduire</Text>
+          <View style={styles.field}>
+            <Text style={styles.label}>Numéro permis de conduire</Text>
 
-        <TextInput
-          value={licenseNumber}
-          onChangeText={setLicenseNumber}
-          placeholder="Numéro permis de conduire"
-          placeholderTextColor={COLORS.textMuted}
-          style={styles.input}
-        />
-      </View>
+            <TextInput
+              value={licenseNumber}
+              onChangeText={setLicenseNumber}
+              placeholder="Numéro permis de conduire"
+              placeholderTextColor={COLORS.textMuted}
+              style={styles.input}
+            />
+          </View>
 
-      <View style={styles.field}>
-        <Text style={styles.label}>Photo permis de conduire</Text>
+          <View style={styles.field}>
+            <Text style={styles.label}>Photo permis de conduire</Text>
 
-        <TouchableOpacity style={styles.uploadInput}>
-          <Text style={styles.placeholder}>Photo permis de conduire</Text>
-          <Text style={styles.icon}>＋</Text>
-        </TouchableOpacity>
-      </View>
+            <TouchableOpacity style={styles.uploadInput}>
+              <Text style={styles.placeholder}>Photo permis de conduire</Text>
+              <Text style={styles.icon}>＋</Text>
+            </TouchableOpacity>
+          </View>
 
-      <View style={styles.buttonContainer}>
+          <View style={styles.buttonContainer}>
 
-        <PrimaryButton
-          title="Suivant"
-          onPress={handleNext}
-          style={{ backgroundColor: COLORS.primary }}
-        />
+            <PrimaryButton
+              title="Suivant"
+              onPress={handleNext}
+              style={{ backgroundColor: COLORS.primary }}
+            />
 
-      </View>
+          </View>
 
-    </View>
+        </ScrollView>
+      </TouchableWithoutFeedback>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -148,7 +164,8 @@ const styles = StyleSheet.create({
   },
 
   buttonContainer:{
-    marginTop:40
+    marginTop:40,
+    marginBottom:20
   }
 
 });
