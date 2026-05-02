@@ -1539,7 +1539,7 @@ app.get("/api/driver/mes-offres", authenticateDriver, (req, res) => {
 
 // ── Modifier un trajet ──
 app.post("/api/trips/update", authenticateDriver, (req, res) => {
-  const { trip_id, departure, destination, heure, seats } = req.body;
+  const { trip_id, departure, destination, heure, seats, prix } = req.body;
   if (!trip_id) return res.status(400).json({ message: "trip_id requis" });
 
   db.query(
@@ -1547,7 +1547,8 @@ app.post("/api/trips/update", authenticateDriver, (req, res) => {
       depart = COALESCE(?, depart),
       destination = COALESCE(?, destination),
       heure = COALESCE(?, heure),
-      places = COALESCE(?, places)
+      places = COALESCE(?, places),
+      prix = COALESCE(?, prix)
      WHERE id = ?`,
     [departure, destination, heure, seats, trip_id],
     (err, result) => {
