@@ -1761,7 +1761,6 @@ app.put("/api/driver/update-profile", authenticateDriver, (req, res) => {
 });
 
 // ================= IMPORTS POUR EMAIL =================
-const nodemailer = require("nodemailer");
 
 // Configuration du transporteur email (UNE SEULE FOIS)
 let transporter;
