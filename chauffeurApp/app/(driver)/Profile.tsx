@@ -33,7 +33,7 @@ type Driver = {
 
 type Stats = {
   total_trips: number;
-  total_revenue?: number;
+  TotalRevenue?: number;
   average_rating?: number;
 };
 
@@ -74,7 +74,7 @@ export default function DriverProfileScreen() {
       setStats(data);
     } catch (e) {
       console.log("STATS ERROR", e);
-      setStats({ total_trips: 0, total_revenue: 0, average_rating: 0 });
+      setStats({ total_trips: 0, TotalRevenue: 0, average_rating: 0 });
     } finally {
       setLoading(false);
     }
@@ -93,7 +93,7 @@ export default function DriverProfileScreen() {
             await SecureStore.deleteItemAsync("token");
             await SecureStore.deleteItemAsync("user");
             await SecureStore.deleteItemAsync("driverId");
-            router.replace("/(auth)/driver-login");
+            router.replace("/(auth)/welcome");
           }
         }
       ]
@@ -206,22 +206,22 @@ export default function DriverProfileScreen() {
       </View>
 
       {/* Carte Statistiques (avec vraies données) */}
-      <View style={styles.statsContainer}>
-        <View style={styles.statCard}>
-          <Text style={styles.statNumber}>{stats?.total_trips || 0}</Text>
-          <Text style={styles.statLabel}>Courses</Text>
-        </View>
-        <View style={styles.statCard}>
-          <Text style={styles.statNumber}>{stats?.average_rating?.toFixed(1) || "4.9"}</Text>
-          <Text style={styles.statLabel}>⭐ Note</Text>
-        </View>
-        <View style={styles.statCard}>
-          <Text style={styles.statNumber}>
-            {stats?.total_revenue ? `${Math.floor(stats.total_revenue / 1000)}k` : "0"}
-          </Text>
-          <Text style={styles.statLabel}>Gains (FCFA)</Text>
-        </View>
-      </View>
+<View style={styles.statsContainer}>
+  <View style={styles.statCard}>
+    <Text style={styles.statNumber}>{stats?.total_trips || 0}</Text>
+    <Text style={styles.statLabel}>Courses</Text>
+  </View>
+  <View style={styles.statCard}>
+    <Text style={styles.statNumber}>{stats?.average_rating?.toFixed(1) || "4.9"}</Text>
+    <Text style={styles.statLabel}>⭐ Note</Text>
+  </View>
+  <View style={styles.statCard}>
+    <Text style={styles.statNumber}>
+      {stats?.TotalRevenue ? stats.TotalRevenue.toLocaleString("fr-FR") : "0"} FCFA
+    </Text>
+    <Text style={styles.statLabel}>Gains totaux</Text>
+  </View>
+</View>
 
       {/* Boutons d'action */}
       <TouchableOpacity style={styles.editProfileButton} onPress={handleEditProfile}>
