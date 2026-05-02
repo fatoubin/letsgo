@@ -12,6 +12,7 @@ type Reservation = {
   prix: number;
   created_at: string;
   reservation_status: string;
+  trajet_status: string;
   trip_id: number;
   depart: string;
   destination: string;
@@ -46,7 +47,6 @@ export default function MesReservations() {
   const [loading, setLoading] = useState(true);
   const [filtre, setFiltre] = useState<Filtre>("TOUTES");
   
-  // États pour le paiement
   const [showPaiement, setShowPaiement] = useState(false);
   const [selectedReservation, setSelectedReservation] = useState<Reservation | null>(null);
   const [paymentStep, setPaymentStep] = useState<'choose' | 'payment'>('choose');
@@ -60,14 +60,27 @@ export default function MesReservations() {
     try {
       setLoading(true);
       const data = await getMesReservations();
+      
+      console.log("📊 ===== DONNÉES API COMPLÈTES =====");
+      console.log(JSON.stringify(data, null, 2));
+      
+      if (data && data.length > 0) {
+        data.forEach((item: any) => {
+          console.log(`📌 Réservation ID ${item.id}: reservation_status=${item.reservation_status}, trajet_status=${item.trajet_status}`);
+        });
+      } else {
+        console.log("⚠️ Aucune donnée reçue de l'API");
+      }
+      
       const enrichedData = (Array.isArray(data) ? data : []).map((item: any) => ({
         ...item,
-        course_terminee: item.course_terminee || false,
+        trajet_status: item.trajet_status || 'active',
+        course_terminee: item.trajet_status === 'completed',
         paiement_effectue: item.paiement_effectue || false,
       }));
       setReservations(enrichedData);
     } catch (error) {
-      console.error(error);
+      console.error("❌ Erreur chargement:", error);
       Alert.alert("Erreur", "Impossible de charger vos réservations");
     } finally {
       setLoading(false);
@@ -81,16 +94,25 @@ export default function MesReservations() {
   );
 
   const applyFilter = useCallback(() => {
+    console.log("🔍 FILTRE ACTUEL:", filtre);
+    console.log("📊 NOMBRE TOTAL RÉSERVATIONS:", reservations.length);
+    
     if (filtre === "TOUTES") {
       setFilteredReservations(reservations);
     } else if (filtre === "a_payer") {
-      setFilteredReservations(
-        reservations.filter(r => 
-          r.reservation_status === 'accepted' && 
-          r.course_terminee === true && 
-          r.paiement_effectue === false
-        )
+      console.log("🔍 Recherche courses à payer...");
+      reservations.forEach(r => {
+        console.log(`  - ID ${r.id}: status=${r.reservation_status}, trajet=${r.trajet_status}, payée=${r.paiement_effectue}`);
+      });
+      
+      const aPayer = reservations.filter(r => 
+        r.reservation_status === 'accepted' && 
+        r.trajet_status === 'completed' &&
+        !r.paiement_effectue
       );
+      
+      console.log("✅ Courses à payer trouvées:", aPayer.length);
+      setFilteredReservations(aPayer);
     } else {
       setFilteredReservations(reservations.filter(r => r.reservation_status === filtre));
     }
@@ -165,8 +187,6 @@ export default function MesReservations() {
     });
   };
 
-  // ================= FONCTIONS DE PAIEMENT =================
-
   const resetPaiement = () => {
     setShowPaiement(false);
     setSelectedReservation(null);
@@ -213,7 +233,6 @@ export default function MesReservations() {
         setTransaction(data);
         setPaymentStep('payment');
         
-        // Ouvrir l'application mobile correspondante
         if (operateur === 'wave') {
           const waveUrl = `wave://send?number=${data.telephone_destinataire}&amount=${data.montant}`;
           const canOpen = await LinkingLib.canOpenURL(waveUrl);
@@ -303,7 +322,6 @@ export default function MesReservations() {
     <View style={styles.container}>
       <Text style={styles.title}>Mes réservations</Text>
 
-      {/* Filtres */}
       <View style={styles.filtersContainer}>
         {[
           { key: "TOUTES", label: "Toutes", color: "#6B7280" },
@@ -327,7 +345,6 @@ export default function MesReservations() {
         ))}
       </View>
 
-      {/* Liste des réservations */}
       <FlatList
         data={filteredReservations}
         keyExtractor={(item) => item.id.toString()}
@@ -347,7 +364,6 @@ export default function MesReservations() {
         }
         renderItem={({ item }) => (
           <View style={styles.card}>
-            {/* En-tête */}
             <View style={styles.cardHeader}>
               <Text style={styles.routeText}>
                 {item.depart} → {item.destination}
@@ -359,8 +375,7 @@ export default function MesReservations() {
               </View>
             </View>
 
-            {/* Badge "Course terminée" si applicable */}
-            {item.reservation_status === 'accepted' && item.course_terminee && !item.paiement_effectue && (
+            {item.reservation_status === 'accepted' && item.trajet_status === 'completed' && !item.paiement_effectue && (
               <View style={styles.courseTermineeBadge}>
                 <Ionicons name="checkmark-done-circle" size={14} color="#10B981" />
                 <Text style={styles.courseTermineeText}>Course terminée - En attente de paiement</Text>
@@ -374,19 +389,16 @@ export default function MesReservations() {
               </View>
             )}
 
-            {/* Date et heure */}
             <View style={styles.infoRow}>
               <Ionicons name="time-outline" size={14} color="#9AA4BF" />
               <Text style={styles.infoText}>{formatDate(item.heure)}</Text>
             </View>
 
-            {/* Places et prix */}
             <View style={styles.infoRow}>
               <Ionicons name="people-outline" size={14} color="#9AA4BF" />
               <Text style={styles.infoText}>{item.places} place(s) - {item.prix.toLocaleString()} FCFA</Text>
             </View>
 
-            {/* Infos chauffeur (si acceptée) */}
             {item.reservation_status === 'accepted' && item.chauffeur_id && (
               <View style={styles.driverSection}>
                 <Text style={styles.driverTitle}>Conducteur</Text>
@@ -415,7 +427,7 @@ export default function MesReservations() {
                     <Ionicons name="location-outline" size={16} color="#fff" />
                     <Text style={styles.actionButtonText}>Voir position</Text>
                   </TouchableOpacity>
-                  {!item.course_terminee && !item.paiement_effectue && (
+                  {item.trajet_status !== 'completed' && !item.paiement_effectue && (
                     <TouchableOpacity 
                       style={styles.cancelButton}
                       onPress={() => handleAnnuler(item)}
@@ -426,8 +438,7 @@ export default function MesReservations() {
                   )}
                 </View>
                 
-                {/* Bouton Payer - visible seulement si course terminée et non payée */}
-                {item.course_terminee && !item.paiement_effectue && (
+                {item.trajet_status === 'completed' && !item.paiement_effectue && (
                   <TouchableOpacity 
                     style={styles.payNowButton}
                     onPress={() => {
@@ -447,7 +458,6 @@ export default function MesReservations() {
               </View>
             )}
 
-            {/* Message pour refusée */}
             {item.reservation_status === 'rejected' && (
               <View style={styles.rejectedMessage}>
                 <Ionicons name="sad-outline" size={20} color="#EF4444" />
@@ -455,7 +465,6 @@ export default function MesReservations() {
               </View>
             )}
 
-            {/* Message pour en cours */}
             {item.reservation_status === 'pending' && (
               <View style={styles.pendingMessage}>
                 <Ionicons name="time-outline" size={20} color="#F59E0B" />
@@ -466,7 +475,6 @@ export default function MesReservations() {
         )}
       />
       
-      {/* MODAL DE PAIEMENT */}
       <Modal transparent visible={showPaiement} animationType="slide" onRequestClose={resetPaiement}>
         <View style={styles.modalOverlay}>
           <View style={styles.modalContainer}>
@@ -808,7 +816,6 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginTop: 8,
   },
-  // Styles du modal de paiement
   modalOverlay: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.5)",
