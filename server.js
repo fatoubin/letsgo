@@ -1671,6 +1671,55 @@ app.get("/traffic/heatmap", async (req, res) => {
   res.json(data);
 });
 
+// ── Mettre à jour le profil chauffeur ──
+app.put("/api/driver/update-profile", authenticateDriver, (req, res) => {
+  const { driver_id, nom, prenom, telephone, residence, vehicle_type, vehicle_plate, seats, license_number } = req.body;
+
+  console.log("📥 [update-profile] Requête reçue:", { driver_id, nom, prenom, telephone, residence, vehicle_type, vehicle_plate, seats, license_number });
+
+  if (!driver_id) {
+    return res.status(400).json({ message: "driver_id requis" });
+  }
+
+  // 1. Mettre à jour la table users
+  const updateUserSql = `
+    UPDATE users u
+    JOIN drivers d ON d.user_id = u.id
+    SET u.nom = ?, u.prenom = ?, u.telephone = ?, u.residence = ?
+    WHERE d.id = ?
+  `;
+
+  db.query(updateUserSql, [nom, prenom, telephone, residence || null, driver_id], (err, result) => {
+    if (err) {
+      console.error("❌ Erreur mise à jour user:", err);
+      return res.status(500).json({ message: "Erreur mise à jour profil", error: err.message });
+    }
+
+    console.log("✅ Utilisateur mis à jour");
+
+    // 2. Mettre à jour la table drivers
+    const updateDriverSql = `
+      UPDATE drivers
+      SET vehicle_type = ?, vehicle_plate = ?, seats = ?, license_number = ?
+      WHERE id = ?
+    `;
+
+    db.query(updateDriverSql, [vehicle_type, vehicle_plate, seats, license_number || null, driver_id], (err2, result2) => {
+      if (err2) {
+        console.error("❌ Erreur mise à jour driver:", err2);
+        return res.status(500).json({ message: "Erreur mise à jour véhicule", error: err2.message });
+      }
+
+      console.log("✅ Chauffeur mis à jour");
+      res.json({ 
+        success: true, 
+        message: "Profil mis à jour avec succès",
+        affectedRows: result.affectedRows + result2.affectedRows
+      });
+    });
+  });
+});
+
 // ================= TRANSPORT URBAIN =================
 
 // Récupérer toutes les lignes de bus
