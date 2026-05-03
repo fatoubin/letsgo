@@ -500,7 +500,7 @@ export default function MesReservations() {
                     style={[styles.operatorBtn, operateur === 'wave' && styles.operatorSelected]}
                     onPress={() => setOperateur('wave')}
                   >
-                    <Ionicons name="logo-wave" size={32} color={operateur === 'wave' ? "#fff" : "#9AA4BF"} />
+                   <Ionicons name="cash-outline"  size={32} color={operateur === 'wave' ? "#fff" : "#9AA4BF"} />
                     <Text style={[styles.operatorText, operateur === 'wave' && styles.operatorTextSelected]}>Wave</Text>
                   </TouchableOpacity>
                   
