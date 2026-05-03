@@ -2891,6 +2891,44 @@ app.get("/api/driver/gains", authenticateDriver, (req, res) => {
         }
     );
 });
+// ================= ROUTES NOTIFICATIONS =================
+
+// Récupérer les notifications du client
+app.get("/api/client/notifications", authenticate, (req, res) => {
+  db.query(
+    "SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC",
+    [req.user.id],
+    (err, results) => {
+      if (err) return res.status(500).json({ message: "Erreur serveur" });
+      res.json(results);
+    }
+  );
+});
+
+// Marquer une notification comme lue
+app.put("/api/client/notifications/:id/read", authenticate, (req, res) => {
+  const { id } = req.params;
+  db.query(
+    "UPDATE notifications SET lu = TRUE WHERE id = ? AND user_id = ?",
+    [id, req.user.id],
+    (err, result) => {
+      if (err) return res.status(500).json({ message: "Erreur serveur" });
+      res.json({ success: true });
+    }
+  );
+});
+
+// Marquer toutes les notifications comme lues
+app.put("/api/client/notifications/read-all", authenticate, (req, res) => {
+  db.query(
+    "UPDATE notifications SET lu = TRUE WHERE user_id = ?",
+    [req.user.id],
+    (err, result) => {
+      if (err) return res.status(500).json({ message: "Erreur serveur" });
+      res.json({ success: true });
+    }
+  );
+});
 // ================= TEST =================
 app.get("/api/test", (req, res) => {
   db.query("SELECT 1+1 AS result", (err, results) => {
