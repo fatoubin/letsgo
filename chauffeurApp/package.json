@@ -12,6 +12,8 @@
   "dependencies": {
     "@react-navigation/drawer": "^7.9.9",
     "expo": "~54.0.25",
+    "expo-image-picker": "16.0.6",
+    "expo-linking": "~8.0.12",
     "expo-location": "~19.0.7",
     "expo-router": "~6.0.23",
     "expo-secure-store": "~15.0.8",
