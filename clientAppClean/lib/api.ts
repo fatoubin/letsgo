@@ -270,6 +270,23 @@ export async function ajouterPlacesReservationInterurbaine(reservationId: number
     body: JSON.stringify({ places_supplementaires }),
   });
 }
+// ================= NOTIFICATIONS =================
+
+export async function getNotifications() {
+  return fetchWithAuth("/api/client/notifications");
+}
+
+export async function marquerNotifLue(id: number) {
+  return fetchWithAuth(`/api/client/notifications/${id}/read`, {
+    method: "PUT",
+  });
+}
+
+export async function marquerToutLu() {
+  return fetchWithAuth("/api/client/notifications/read-all", {
+    method: "PUT",
+  });
+}
 // ==============================
 // 🔍 TEST DE CONNEXION
 // ==============================

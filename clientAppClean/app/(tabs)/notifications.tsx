@@ -5,59 +5,88 @@ import {
   ScrollView,
   TouchableOpacity,
   StatusBar,
+  ActivityIndicator,
+  RefreshControl,
 } from "react-native";
+import { useState, useEffect, useCallback } from "react";
 import { Ionicons } from "@expo/vector-icons";
+import { getNotifications, marquerToutLu, marquerNotifLue } from "../../lib/api";
 
-const NOTIFS = [
-  {
-    id: 1,
-    icon: "checkmark-circle",
-    iconColor: "#3DDC97",
-    titre: "Réservation confirmée",
-    message: "Votre trajet Dakar → Thiès du 21/04 a été confirmé.",
-    heure: "Il y a 10 min",
-    lu: false,
-  },
-  {
-    id: 2,
-    icon: "car",
-    iconColor: "#4DA3FF",
-    titre: "Nouveau trajet disponible",
-    message: "Un covoiturage Almadies → Plateau est disponible à 08h00.",
-    heure: "Il y a 1h",
-    lu: false,
-  },
-  {
-    id: 3,
-    icon: "close-circle",
-    iconColor: "#ff6b6b",
-    titre: "Réservation annulée",
-    message: "Le trajet Ouakam → Centre-ville du 20/04 a été annulé.",
-    heure: "Hier",
-    lu: true,
-  },
-  {
-    id: 4,
-    icon: "bus",
-    iconColor: "#FFC107",
-    titre: "Rappel de trajet",
-    message: "Votre bus Dakar → Mbour part dans 30 minutes.",
-    heure: "Hier",
-    lu: true,
-  },
-  {
-    id: 5,
-    icon: "star",
-    iconColor: "#FACC15",
-    titre: "Évaluez votre trajet",
-    message: "Comment s'est passé votre trajet Dakar → Thiès ?",
-    heure: "Il y a 2j",
-    lu: true,
-  },
-];
+type Notif = {
+  id: number;
+  titre: string;
+  message: string;
+  type: string;
+  lu: boolean;
+  created_at: string;
+};
+
+function getIconConfig(type: string): { icon: string; color: string } {
+  switch (type) {
+    case "offre": return { icon: "car", color: "#4DA3FF" };
+    case "acceptee": return { icon: "checkmark-circle", color: "#3DDC97" };
+    case "refusee": return { icon: "close-circle", color: "#ff6b6b" };
+    case "rappel": return { icon: "alarm", color: "#FFC107" };
+    default: return { icon: "notifications", color: "#8899BB" };
+  }
+}
+
+function formatDate(dateStr: string): string {
+  const date = new Date(dateStr);
+  const now = new Date();
+  const diff = Math.floor((now.getTime() - date.getTime()) / 1000);
+
+  if (diff < 60) return "À l'instant";
+  if (diff < 3600) return `Il y a ${Math.floor(diff / 60)} min`;
+  if (diff < 86400) return `Il y a ${Math.floor(diff / 3600)}h`;
+  if (diff < 172800) return "Hier";
+  return `Il y a ${Math.floor(diff / 86400)}j`;
+}
 
 export default function NotificationsScreen() {
-  const nonLues = NOTIFS.filter((n) => !n.lu).length;
+  const [notifs, setNotifs] = useState<Notif[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const loadNotifs = async () => {
+    try {
+      const data = await getNotifications();
+      setNotifs(data || []);
+    } catch (err) {
+      console.error("Erreur chargement notifications:", err);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  useEffect(() => {
+    loadNotifs();
+    // Rafraîchir toutes les 30 secondes
+    const interval = setInterval(loadNotifs, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    loadNotifs();
+  }, []);
+
+  const handleMarquerTout = async () => {
+    await marquerToutLu();
+    setNotifs((prev) => prev.map((n) => ({ ...n, lu: true })));
+  };
+
+  const handleMarquerLue = async (id: number) => {
+    await marquerNotifLue(id);
+    setNotifs((prev) =>
+      prev.map((n) => (n.id === id ? { ...n, lu: true } : n))
+    );
+  };
+
+  const nonLues = notifs.filter((n) => !n.lu).length;
+  const nouvelles = notifs.filter((n) => !n.lu);
+  const precedentes = notifs.filter((n) => n.lu);
 
   return (
     <View style={styles.container}>
@@ -68,70 +97,104 @@ export default function NotificationsScreen() {
         <View>
           <Text style={styles.title}>Notifications</Text>
           {nonLues > 0 && (
-            <Text style={styles.subtitle}>{nonLues} non lue{nonLues > 1 ? "s" : ""}</Text>
+            <Text style={styles.subtitle}>
+              {nonLues} non lue{nonLues > 1 ? "s" : ""}
+            </Text>
           )}
         </View>
         {nonLues > 0 && (
-          <TouchableOpacity style={styles.markAllBtn}>
+          <TouchableOpacity style={styles.markAllBtn} onPress={handleMarquerTout}>
             <Text style={styles.markAllText}>Tout marquer lu</Text>
           </TouchableOpacity>
         )}
       </View>
 
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 100 }}
-      >
-        {/* NON LUES */}
-        {NOTIFS.filter((n) => !n.lu).length > 0 && (
-          <>
-            <Text style={styles.sectionLabel}>Nouvelles</Text>
-            {NOTIFS.filter((n) => !n.lu).map((n) => (
-              <TouchableOpacity key={n.id} style={[styles.card, styles.cardUnread]}>
-                <View style={[styles.iconBadge, { backgroundColor: n.iconColor + "22" }]}>
-                  <Ionicons name={n.icon as any} size={20} color={n.iconColor} />
-                </View>
-                <View style={styles.cardContent}>
-                  <View style={styles.cardTop}>
-                    <Text style={styles.cardTitre}>{n.titre}</Text>
-                    <View style={styles.unreadDot} />
-                  </View>
-                  <Text style={styles.cardMessage}>{n.message}</Text>
-                  <Text style={styles.cardHeure}>{n.heure}</Text>
-                </View>
-              </TouchableOpacity>
-            ))}
-          </>
-        )}
+      {loading ? (
+        <View style={styles.loaderContainer}>
+          <ActivityIndicator size="large" color="#4DA3FF" />
+        </View>
+      ) : (
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 100 }}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor="#4DA3FF"
+            />
+          }
+        >
+          {notifs.length === 0 ? (
+            <View style={styles.empty}>
+              <Ionicons name="notifications-off-outline" size={48} color="#1A2B4A" />
+              <Text style={styles.emptyText}>Aucune notification</Text>
+              <Text style={styles.emptySubtext}>
+                Vous serez notifié quand un chauffeur répondra à vos demandes
+              </Text>
+            </View>
+          ) : (
+            <>
+              {/* NON LUES */}
+              {nouvelles.length > 0 && (
+                <>
+                  <Text style={styles.sectionLabel}>Nouvelles</Text>
+                  {nouvelles.map((n) => {
+                    const { icon, color } = getIconConfig(n.type);
+                    return (
+                      <TouchableOpacity
+                        key={n.id}
+                        style={[styles.card, styles.cardUnread]}
+                        onPress={() => handleMarquerLue(n.id)}
+                      >
+                        <View style={[styles.iconBadge, { backgroundColor: color + "22" }]}>
+                          <Ionicons name={icon as any} size={20} color={color} />
+                        </View>
+                        <View style={styles.cardContent}>
+                          <View style={styles.cardTop}>
+                            <Text style={styles.cardTitre}>{n.titre}</Text>
+                            <View style={styles.unreadDot} />
+                          </View>
+                          <Text style={styles.cardMessage}>{n.message}</Text>
+                          <Text style={styles.cardHeure}>{formatDate(n.created_at)}</Text>
+                        </View>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </>
+              )}
 
-        {/* LUES */}
-        {NOTIFS.filter((n) => n.lu).length > 0 && (
-          <>
-            <Text style={styles.sectionLabel}>Précédentes</Text>
-            {NOTIFS.filter((n) => n.lu).map((n) => (
-              <TouchableOpacity key={n.id} style={styles.card}>
-                <View style={[styles.iconBadge, { backgroundColor: "#1A2B4A" }]}>
-                  <Ionicons name={n.icon as any} size={20} color="#5A6A8A" />
-                </View>
-                <View style={styles.cardContent}>
-                  <Text style={[styles.cardTitre, { color: "#8899BB" }]}>{n.titre}</Text>
-                  <Text style={styles.cardMessage}>{n.message}</Text>
-                  <Text style={styles.cardHeure}>{n.heure}</Text>
-                </View>
-              </TouchableOpacity>
-            ))}
-          </>
-        )}
-      </ScrollView>
+              {/* LUES */}
+              {precedentes.length > 0 && (
+                <>
+                  <Text style={styles.sectionLabel}>Précédentes</Text>
+                  {precedentes.map((n) => {
+                    const { icon } = getIconConfig(n.type);
+                    return (
+                      <TouchableOpacity key={n.id} style={styles.card}>
+                        <View style={[styles.iconBadge, { backgroundColor: "#1A2B4A" }]}>
+                          <Ionicons name={icon as any} size={20} color="#5A6A8A" />
+                        </View>
+                        <View style={styles.cardContent}>
+                          <Text style={[styles.cardTitre, { color: "#8899BB" }]}>{n.titre}</Text>
+                          <Text style={styles.cardMessage}>{n.message}</Text>
+                          <Text style={styles.cardHeure}>{formatDate(n.created_at)}</Text>
+                        </View>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </>
+              )}
+            </>
+          )}
+        </ScrollView>
+      )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#070F23",
-  },
+  container: { flex: 1, backgroundColor: "#070F23" },
   header: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -140,16 +203,8 @@ const styles = StyleSheet.create({
     paddingTop: 52,
     paddingBottom: 20,
   },
-  title: {
-    color: "#fff",
-    fontSize: 26,
-    fontWeight: "800",
-  },
-  subtitle: {
-    color: "#4DA3FF",
-    fontSize: 13,
-    marginTop: 2,
-  },
+  title: { color: "#fff", fontSize: 26, fontWeight: "800" },
+  subtitle: { color: "#4DA3FF", fontSize: 13, marginTop: 2 },
   markAllBtn: {
     paddingVertical: 6,
     paddingHorizontal: 12,
@@ -158,11 +213,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#1A2B4A",
   },
-  markAllText: {
-    color: "#4DA3FF",
-    fontSize: 12,
-    fontWeight: "600",
-  },
+  markAllText: { color: "#4DA3FF", fontSize: 12, fontWeight: "600" },
+  loaderContainer: { flex: 1, alignItems: "center", justifyContent: "center" },
+  empty: { alignItems: "center", marginTop: 80, gap: 12, paddingHorizontal: 32 },
+  emptyText: { color: "#5A6A8A", fontSize: 16, fontWeight: "600" },
+  emptySubtext: { color: "#2A3A5A", fontSize: 13, textAlign: "center", lineHeight: 20 },
   sectionLabel: {
     color: "#8899BB",
     fontSize: 11,
@@ -182,10 +237,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#1A2B4A",
   },
-  cardUnread: {
-    borderColor: "#1A4ED8",
-    backgroundColor: "#0C1830",
-  },
+  cardUnread: { borderColor: "#1A4ED8", backgroundColor: "#0C1830" },
   iconBadge: {
     width: 42,
     height: 42,
@@ -193,21 +245,14 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  cardContent: {
-    flex: 1,
-  },
+  cardContent: { flex: 1 },
   cardTop: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     marginBottom: 4,
   },
-  cardTitre: {
-    color: "#fff",
-    fontSize: 14,
-    fontWeight: "700",
-    flex: 1,
-  },
+  cardTitre: { color: "#fff", fontSize: 14, fontWeight: "700", flex: 1 },
   unreadDot: {
     width: 8,
     height: 8,
@@ -215,15 +260,6 @@ const styles = StyleSheet.create({
     backgroundColor: "#4DA3FF",
     marginLeft: 8,
   },
-  cardMessage: {
-    color: "#5A6A8A",
-    fontSize: 13,
-    lineHeight: 18,
-    marginBottom: 6,
-  },
-  cardHeure: {
-    color: "#2A3A5A",
-    fontSize: 11,
-    fontWeight: "600",
-  },
+  cardMessage: { color: "#5A6A8A", fontSize: 13, lineHeight: 18, marginBottom: 6 },
+  cardHeure: { color: "#2A3A5A", fontSize: 11, fontWeight: "600" },
 });

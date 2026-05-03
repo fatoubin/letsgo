@@ -215,20 +215,22 @@ export default function MesReservations() {
     try {
       const token = await getToken();
       const response = await fetch(`${API_URL}/api/paiements/initier`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          reservation_id: selectedReservation.id,
-          operateur: operateur,
-          telephone: telephone,
-        }),
-      });
-      
-      const data = await response.json();
-      
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+    "Authorization": `Bearer ${token}`,
+  },
+  body: JSON.stringify({
+    reservation_id: selectedReservation.id,
+    operateur: operateur,
+    telephone: telephone,
+  }),
+});
+
+const text = await response.text();  // ← Récupère la réponse brute
+console.log("📡 Réponse brute API paiement:", text);  // ← Affiche l'erreur exacte
+
+const data = JSON.parse(text);
       if (data.transaction_id) {
         setTransaction(data);
         setPaymentStep('payment');

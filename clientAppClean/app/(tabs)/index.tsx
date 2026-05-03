@@ -36,7 +36,7 @@ export default function HomeScreen() {
           <Ionicons name="menu" size={24} color="#fff" />
         </TouchableOpacity>
 
-        <Text style={styles.logo}>SAMABUS</Text>
+        <Text style={styles.logo}>Let'sgo</Text>
 
         <TouchableOpacity onPress={() => setShowMenu(!showMenu)} style={styles.avatarBtn}>
           <Ionicons name="person-circle" size={32} color="#4DA3FF" />

@@ -5,35 +5,22 @@ import * as SecureStore from "expo-secure-store";
 
 export default function RootLayout() {
   const [loading, setLoading] = useState(true);
-  const [route, setRoute] = useState<"(client)" | "(driver)" | "auth/login">(
-    "auth/login"
-  );
+  const [isAuth, setIsAuth] = useState(false);
 
   useEffect(() => {
     const checkAuth = async () => {
       try {
         const token = await SecureStore.getItemAsync("token");
         const userStr = await SecureStore.getItemAsync("user");
-
-        if (!token || !userStr) {
-          setRoute("auth/login");
-          return;
-        }
-
-        const user = JSON.parse(userStr);
-
-        if (user.role === "driver") {
-          setRoute("(driver)");
-        } else {
-          setRoute("(client)");
+        if (token && userStr) {
+          setIsAuth(true);
         }
       } catch (e) {
-        setRoute("auth/login");
+        setIsAuth(false);
       } finally {
         setLoading(false);
       }
     };
-
     checkAuth();
   }, []);
 
@@ -47,7 +34,10 @@ export default function RootLayout() {
 
   return (
     <Stack screenOptions={{ headerShown: false }}>
-      <Stack.Screen name={route} />
+      <Stack.Screen name="(tabs)" />
+      <Stack.Screen name="auth" />
+      <Stack.Screen name="client" />
+      <Stack.Screen name="transport" />
     </Stack>
   );
 }
