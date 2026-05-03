@@ -2,32 +2,54 @@
   "expo": {
     "name": "chauffeurApp",
     "slug": "chauffeurApp",
+    "scheme": "letsgo",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#1a1a2e"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.letsgo.driver",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Let'sGo a besoin d'accéder à votre appareil photo",
+        "NSPhotoLibraryUsageDescription": "Let'sGo a besoin d'accéder à vos photos"
+      }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "backgroundColor": "#1a1a2e"
       },
-      "edgeToEdgeEnabled": true
+      "package": "com.letsgo.driver",
+      "edgeToEdgeEnabled": true,
+      "permissions": [
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE",
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
       "expo-router",
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Let'sGo a besoin d'accéder à vos photos pour ajouter une photo de profil.",
+          "cameraPermission": "Let'sGo a besoin d'accéder à votre appareil photo pour prendre une photo de profil.",
+          "microphonePermission": false
+        }
+      ]
     ]
   }
 }
