@@ -618,6 +618,12 @@ app.put("/api/trips/complete/:id", authenticateDriver, (req, res) => {
         return res.status(404).json({ message: "Trajet non trouvé" });
       }
       
+db.query("SELECT r.user_id FROM reservations r WHERE r.trip_id = ?", [tripId], (err, userResult) => {
+  if (!err && userResult.length > 0) {
+    createNotification(userResult[0].user_id, "Course terminée 🚗", "Votre course est terminée. Vous pouvez maintenant payer.", "rappel");
+  }
+});
+      
       console.log(`✅ Trajet ${tripId} marqué comme terminé`);
       res.json({ 
         success: true, 
@@ -854,7 +860,8 @@ app.post("/api/client/repondre-offre", authenticate, (req, res) => {
                   console.error("❌ Erreur création réservation:", err3);
                   return res.status(500).json({ message: "Erreur création réservation" });
                 }
-                
+                // Dans le bloc if (action === "accept"), après la création de la réservation
+createNotification(offre.chauffeur_id, "Offre acceptée ✅", `Le client a accepté votre offre pour le trajet`, "acceptee");
                 // 3. Mettre à jour le statut de l'offre
                 db.query(
                   "UPDATE trajet_offres SET statut = 'acceptee' WHERE id = ?",
@@ -1156,6 +1163,16 @@ app.post("/api/trips/reservation_action", authenticateDriver, (req, res) => {
       }
 
       if (result.affectedRows === 0) {
+        db.query("SELECT user_id FROM reservations WHERE id = ?", [reservation_id], (err, userResult) => {
+  if (!err && userResult.length > 0) {
+    const passagerId = userResult[0].user_id;
+    if (status === "accepted") {
+      createNotification(passagerId, "Réservation acceptée 🎉", "Votre réservation a été acceptée par le chauffeur", "acceptee");
+    } else if (status === "rejected") {
+      createNotification(passagerId, "Réservation refusée ❌", "Votre réservation a été refusée par le chauffeur", "refusee");
+    }
+  }
+});
         return res.status(404).json({ message: "Réservation non trouvée" });
       }
 
@@ -1294,6 +1311,11 @@ app.post("/api/driver/make-offer", authenticateDriver, (req, res) => {
                 });
               }
             );
+            db.query("SELECT d.user_id FROM demandes d WHERE d.id = ?", [demande_id], (err, userResult) => {
+  if (!err && userResult.length > 0) {
+    createNotification(userResult[0].user_id, "Nouvelle offre 💰", `Un chauffeur vous propose un trajet à ${prix_propose} FCFA`, "offre");
+  }
+});
           }
         }
       );
