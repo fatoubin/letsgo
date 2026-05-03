@@ -2893,18 +2893,22 @@ app.get("/api/driver/gains", authenticateDriver, (req, res) => {
 });
 // ================= ROUTES NOTIFICATIONS =================
 
-// ================= ROUTES NOTIFICATIONS =================
+
 
 // Récupérer les notifications du client
+// Récupérer les notifications du client
 app.get("/api/client/notifications", authenticate, (req, res) => {
+  console.log("🔍 Récupération notifications pour user:", req.user.id);
+  
   db.query(
     "SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC",
     [req.user.id],
     (err, results) => {
       if (err) {
-        console.error("❌ Erreur notifications:", err);
-        return res.status(500).json({ message: "Erreur serveur" });
+        console.error("❌ Erreur SQL notifications:", err);
+        return res.status(500).json({ message: "Erreur serveur", detail: err.message });
       }
+      console.log(`✅ ${results.length} notifications trouvées`);
       res.json(results);
     }
   );
