@@ -604,7 +604,7 @@ app.put("/api/trips/complete/:id", authenticateDriver, (req, res) => {
   
   console.log(`📝 Marquage du trajet ${tripId} comme terminé`);
   
-  // Mettre à jour le statut du trajet sans le supprimer
+  // Mettre à jour le statut du trajet
   db.query(
     "UPDATE trajets SET status = 'completed', completed_at = NOW() WHERE id = ?",
     [tripId],
@@ -618,11 +618,22 @@ app.put("/api/trips/complete/:id", authenticateDriver, (req, res) => {
         return res.status(404).json({ message: "Trajet non trouvé" });
       }
       
-db.query("SELECT r.user_id FROM reservations r WHERE r.trip_id = ?", [tripId], (err, userResult) => {
-  if (!err && userResult.length > 0) {
-    createNotification(userResult[0].user_id, "Course terminée 🚗", "Votre course est terminée. Vous pouvez maintenant payer.", "rappel");
-  }
-});
+      // ✅ AJOUTER CETTE PARTIE : Mettre à jour les réservations
+      db.query(
+        "UPDATE reservations SET course_terminee = TRUE, course_terminee_at = NOW() WHERE trip_id = ?",
+        [tripId],
+        (err2, result2) => {
+          if (err2) console.error("❌ Erreur mise à jour réservations:", err2);
+          else console.log(`✅ ${result2.affectedRows} réservation(s) marquée(s) terminée`);
+        }
+      );
+      
+      // Notification au passager
+      db.query("SELECT r.user_id FROM reservations r WHERE r.trip_id = ?", [tripId], (err, userResult) => {
+        if (!err && userResult.length > 0) {
+          createNotification(userResult[0].user_id, "Course terminée 🚗", "Votre course est terminée. Vous pouvez maintenant payer.", "rappel");
+        }
+      });
       
       console.log(`✅ Trajet ${tripId} marqué comme terminé`);
       res.json({ 
