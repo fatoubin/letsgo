@@ -2944,6 +2944,132 @@ app.put("/api/client/notifications/read-all", authenticate, (req, res) => {
     }
   );
 });
+// ================= PAIEMENTS WAVE / ORANGE MONEY =================
+
+app.post("/api/paiements/initier", authenticate, (req, res) => {
+    const { reservation_id, operateur, telephone } = req.body;
+    
+    if (!reservation_id || !operateur || !telephone) {
+        return res.status(400).json({ message: "reservation_id, operateur et telephone requis" });
+    }
+    
+    if (!['wave', 'om'].includes(operateur)) {
+        return res.status(400).json({ message: "Opérateur invalide. Choisir 'wave' ou 'om'" });
+    }
+    
+    db.query(
+        `SELECT r.*, 
+                u.nom as passager_nom, u.telephone as passager_telephone,
+                c.nom as chauffeur_nom, c.prenom as chauffeur_prenom,
+                c.telephone as chauffeur_telephone
+         FROM reservations r
+         JOIN users u ON r.user_id = u.id
+         JOIN trajets t ON r.trip_id = t.id
+         JOIN users c ON t.user_id = c.id
+         WHERE r.id = ? AND r.user_id = ? AND r.course_terminee = TRUE AND r.paiement_effectue = FALSE`,
+        [reservation_id, req.user.id],
+        (err, results) => {
+            if (err) {
+                console.error("❌ Erreur SQL:", err);
+                return res.status(500).json({ message: "Erreur serveur", detail: err.message });
+            }
+            if (results.length === 0) {
+                return res.status(404).json({ message: "Réservation non trouvée ou déjà payée" });
+            }
+            
+            const reservation = results[0];
+            const codeConfirmation = Math.floor(100000 + Math.random() * 900000).toString();
+            
+            db.query(
+                `INSERT INTO transactions_mobile 
+                 (reservation_id, passager_id, chauffeur_id, montant, telephone_passager, telephone_chauffeur, operateur, code_confirmation, statut)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending')`,
+                [
+                    reservation_id, 
+                    req.user.id, 
+                    reservation.chauffeur_id, 
+                    reservation.prix,
+                    telephone,
+                    reservation.chauffeur_telephone,
+                    operateur,
+                    codeConfirmation
+                ],
+                (err2, result) => {
+                    if (err2) {
+                        console.error("❌ Erreur création transaction:", err2);
+                        return res.status(500).json({ message: "Erreur création transaction", detail: err2.message });
+                    }
+                    
+                    res.json({
+                        transaction_id: result.insertId,
+                        montant: reservation.prix,
+                        telephone_destinataire: reservation.chauffeur_telephone,
+                        operateur: operateur,
+                        reference: `LETGO-${reservation_id}-${Date.now()}`,
+                        code_confirmation: codeConfirmation
+                    });
+                }
+            );
+        }
+    );
+});
+
+app.post("/api/paiements/confirmer", authenticate, (req, res) => {
+    const { transaction_id, code_confirmation } = req.body;
+    
+    if (!transaction_id || !code_confirmation) {
+        return res.status(400).json({ message: "transaction_id et code_confirmation requis" });
+    }
+    
+    db.query(
+        `SELECT * FROM transactions_mobile 
+         WHERE id = ? AND passager_id = ? AND statut = 'pending'`,
+        [transaction_id, req.user.id],
+        (err, results) => {
+            if (err) {
+                console.error("❌ Erreur SQL:", err);
+                return res.status(500).json({ message: "Erreur serveur", detail: err.message });
+            }
+            if (results.length === 0) {
+                return res.status(404).json({ message: "Transaction non trouvée" });
+            }
+            
+            const transaction = results[0];
+            
+            if (transaction.code_confirmation !== code_confirmation) {
+                return res.status(400).json({ message: "Code de confirmation invalide" });
+            }
+            
+            db.query(
+                `UPDATE transactions_mobile 
+                 SET statut = 'confirmed', confirmed_at = NOW()
+                 WHERE id = ?`,
+                [transaction_id],
+                (err2) => {
+                    if (err2) {
+                        console.error("❌ Erreur validation:", err2);
+                        return res.status(500).json({ message: "Erreur validation" });
+                    }
+                    
+                    db.query(
+                        `UPDATE reservations 
+                         SET paiement_effectue = TRUE, methode_paiement = ?
+                         WHERE id = ?`,
+                        [transaction.operateur, transaction.reservation_id],
+                        (err3) => {
+                            if (err3) console.error("❌ Erreur mise à jour réservation:", err3);
+                            
+                            res.json({ 
+                                success: true, 
+                                message: `Paiement confirmé avec succès via ${transaction.operateur === 'wave' ? 'Wave' : 'Orange Money'}` 
+                            });
+                        }
+                    );
+                }
+            );
+        }
+    );
+});
 // ================= TEST =================
 app.get("/api/test", (req, res) => {
   db.query("SELECT 1+1 AS result", (err, results) => {
