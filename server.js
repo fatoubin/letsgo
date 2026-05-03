@@ -1233,6 +1233,21 @@ app.post("/api/trips/demande_action", authenticateDriver, (req, res) => {
   }
 });
 
+// ── Récupérer la position d'un passager ──
+app.get("/api/passenger/location/:userId", authenticateDriver, (req, res) => {
+  const userId = req.params.userId;
+  
+  db.query(
+    "SELECT latitude, longitude FROM users WHERE id = ?",
+    [userId],
+    (err, results) => {
+      if (err) return res.status(500).json({ message: "Erreur serveur" });
+      if (results.length === 0) return res.status(404).json({ message: "Passager non trouvé" });
+      res.json({ latitude: results[0].latitude, longitude: results[0].longitude });
+    }
+  );
+});
+
 // ============= ROUTES POUR LA NEGOCIATION ==============
 
 // ── Chauffeur propose un prix pour une demande (offre initiale ou contre-offre) ──
