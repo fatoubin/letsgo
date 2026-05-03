@@ -2893,13 +2893,18 @@ app.get("/api/driver/gains", authenticateDriver, (req, res) => {
 });
 // ================= ROUTES NOTIFICATIONS =================
 
+// ================= ROUTES NOTIFICATIONS =================
+
 // Récupérer les notifications du client
 app.get("/api/client/notifications", authenticate, (req, res) => {
   db.query(
     "SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC",
     [req.user.id],
     (err, results) => {
-      if (err) return res.status(500).json({ message: "Erreur serveur" });
+      if (err) {
+        console.error("❌ Erreur notifications:", err);
+        return res.status(500).json({ message: "Erreur serveur" });
+      }
       res.json(results);
     }
   );
@@ -2912,7 +2917,10 @@ app.put("/api/client/notifications/:id/read", authenticate, (req, res) => {
     "UPDATE notifications SET lu = TRUE WHERE id = ? AND user_id = ?",
     [id, req.user.id],
     (err, result) => {
-      if (err) return res.status(500).json({ message: "Erreur serveur" });
+      if (err) {
+        console.error("❌ Erreur maj notification:", err);
+        return res.status(500).json({ message: "Erreur serveur" });
+      }
       res.json({ success: true });
     }
   );
@@ -2924,7 +2932,10 @@ app.put("/api/client/notifications/read-all", authenticate, (req, res) => {
     "UPDATE notifications SET lu = TRUE WHERE user_id = ?",
     [req.user.id],
     (err, result) => {
-      if (err) return res.status(500).json({ message: "Erreur serveur" });
+      if (err) {
+        console.error("❌ Erreur maj toutes notifications:", err);
+        return res.status(500).json({ message: "Erreur serveur" });
+      }
       res.json({ success: true });
     }
   );
